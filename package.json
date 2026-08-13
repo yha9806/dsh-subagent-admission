@@ -14,6 +14,7 @@
     "build": "pnpm build:host && pnpm build:client",
     "lint": "oxlint .",
     "typecheck": "pnpm build:host && tsc -b tsconfig.client.json --pretty false",
+    "pretest": "pnpm build",
     "test": "vitest run",
     "test:e2e": "vitest run --config vitest.e2e.config.ts",
     "pack:plugin": "pnpm build && pnpm --dir packages/dsh-subagent-admission pack --pack-destination ../../dist"
