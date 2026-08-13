@@ -1,0 +1,35 @@
+{
+  "discussion131": {
+    "apiUrl": "https://api.github.com/repos/deepseek-ai/deepseek-harness/discussions/131",
+    "commentCount": 2,
+    "commentsUrl": "https://api.github.com/repos/deepseek-ai/deepseek-harness/discussions/131/comments",
+    "id": 10606879,
+    "maintainerCommentCount": 0,
+    "observedAt": "2026-08-13T19:56:04.657Z",
+    "state": "open",
+    "updatedAt": "2026-08-13T14:21:48Z",
+    "url": "https://github.com/deepseek-ai/deepseek-harness/discussions/131",
+    "votes": 5
+  },
+  "npm": {
+    "@deepseek-ai/dsh": {
+      "latest": "0.1.0-rc.6",
+      "next": "0.1.0-rc.6"
+    },
+    "@deepseek-ai/dsh-subagent": {
+      "latest": "0.0.1-rc.1",
+      "next": "0.1.0-rc.6"
+    }
+  },
+  "observedAt": "2026-08-13T19:56:04.657Z",
+  "schemaVersion": 1,
+  "source": {
+    "commit": "47f943859bef60e4160492346772ded9b24f765a",
+    "packagePath": "packages/subagent/subagent/package.json",
+    "packageVersion": "0.1.0-rc.5",
+    "repository": "https://github.com/deepseek-ai/deepseek-harness.git"
+  },
+  "status": "source-npm-diverged",
+  "strictTargets": [],
+  "strictTargetsCurrent": true
+}

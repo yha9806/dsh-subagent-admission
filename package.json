@@ -1,0 +1,43 @@
+{
+  "name": "dsh-subagent-admission-workspace",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.7.0",
+  "engines": {
+    "node": "^22.19.0 || >=24.0.0"
+  },
+  "scripts": {
+    "baseline:check": "tsx scripts/refresh-baseline.mts --check",
+    "baseline:write": "tsx scripts/refresh-baseline.mts --write",
+    "build:host": "tsc -b tsconfig.host.json && pnpm --dir packages/dsh-subagent-admission exec tsdown --env.DSH_BUILD_FACE host",
+    "build:client": "tsc -b tsconfig.client.json && pnpm --dir packages/dsh-subagent-admission exec tsdown --env.DSH_BUILD_FACE client",
+    "build": "pnpm build:host && pnpm build:client",
+    "lint": "oxlint .",
+    "typecheck": "pnpm build:host && tsc -b tsconfig.client.json --pretty false",
+    "test": "vitest run",
+    "test:e2e": "vitest run --config vitest.e2e.config.ts",
+    "pack:plugin": "pnpm build && pnpm --dir packages/dsh-subagent-admission pack --pack-destination ../../dist"
+  },
+  "devDependencies": {
+    "@deepseek-ai/dsh": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-typert-generator": "0.1.0-rc.6",
+    "@testing-library/jest-dom": "7.0.1",
+    "@testing-library/react": "16.3.2",
+    "@testing-library/user-event": "14.6.4",
+    "@types/node": "22.20.0",
+    "@types/react": "18.3.1",
+    "@types/react-dom": "18.3.0",
+    "fast-check": "4.8.0",
+    "jsdom": "29.1.1",
+    "oxlint": "1.78.0",
+    "playwright": "1.62.1",
+    "react": "18.2.0",
+    "react-dom": "18.2.0",
+    "tsdown": "0.22.2",
+    "tsx": "4.22.4",
+    "typescript": "6.0.3",
+    "vite-tsconfig-paths": "6.1.1",
+    "vitest": "4.1.8",
+    "zod": "4.4.3"
+  }
+}

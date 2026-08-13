@@ -1,0 +1,10 @@
+- insert:
+    - id: subagent-admission
+      name: dsh-subagent-admission
+      config:
+        mode: audit
+        globalActive: 6
+        perRootActive: 4
+        perRootAdmittedTotal: 24
+        perParentChildren: 8
+        ownershipPath: !!js dshHomePath('sessions/.dsh-subagent-admission-owner')
