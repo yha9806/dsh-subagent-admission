@@ -1357,7 +1357,6 @@ git commit -m "feat: add admission control view"
 **Files:**
 - Create: `scripts/packed-install.mts`
 - Create: `tests/packed-install.e2e.ts`
-- Create: `docs/assets/admission-control.png`
 - Create: `.github/workflows/ci.yml`
 - Create: `.github/workflows/upstream-drift.yml`
 - Modify: `package.json`
@@ -1387,7 +1386,7 @@ Expected: FAIL because `packed-install.mts` is absent.
 
 - [ ] **Step 3: Implement isolated pack/install and native GUI proof**
 
-The script uses `mkdtemp`, absolute validated paths, and local tarballs only. It never edits the user's real profile. It records package integrity hash, `lib/client.js` hash, profile dump hash, DSH package versions, mode, Node/platform, and command exit codes. With `--capture-gui`, it boots the packed plugin in the temporary `web` profile on a loopback ephemeral port with deterministic fake-provider data and a fixed clock, opens it in Playwright Chromium, selects `Admission Control`, asserts the status text, four quota cards, active/history sections, and absence of mutation controls, then writes the requested PNG and its SHA-256 into the packed-install report. Cleanup removes only its exact temporary directory and always terminates the web child.
+The script uses `mkdtemp`, absolute validated paths, and local tarballs only. It never edits the user's real profile. It records package integrity hash, `lib/client.js` hash, profile dump hash, DSH package versions, mode, Node/platform, and command exit codes. With `--capture-gui`, it boots the packed plugin in the temporary `web` profile on a loopback ephemeral port with deterministic fake-provider data and a fixed clock, opens it in Playwright Chromium, selects `Admission Control`, asserts the status text, four quota cards, active/history sections, and absence of mutation controls, then writes the requested ignored candidate PNG and its SHA-256 into the packed-install report. Cleanup removes only its exact temporary directory and always terminates the web child.
 
 After capture, inspect the PNG at native resolution. The visual gate requires the displayed mode and enforcement truth to be readable, no clipped card/table content at 1440×900, visible focus state, and no layout displacement of Chat or Trajectory. Record this as agent visual QA only; do not call it human review or kernel evidence.
 
@@ -1416,13 +1415,13 @@ corepack pnpm typecheck
 corepack pnpm test
 corepack pnpm test:e2e -- tests/packed-install.e2e.ts
 corepack pnpm exec playwright install chromium
-corepack pnpm tsx scripts/packed-install.mts --capture-gui --screenshot docs/assets/admission-control.png
+corepack pnpm tsx scripts/packed-install.mts --capture-gui --screenshot evidence/admission-control.png
 ```
 
 Expected: PASS for supported local gates; platform-only jobs remain unclaimed until CI completes.
 
 ```bash
-git add scripts/packed-install.mts tests/packed-install.e2e.ts docs/assets/admission-control.png .github package.json
+git add scripts/packed-install.mts tests/packed-install.e2e.ts .github package.json
 git commit -m "ci: verify packed dsh installation"
 ```
 
@@ -1512,6 +1511,7 @@ git commit -m "test: add admission performance evidence"
 **Files:**
 - Create: `README.md`
 - Create: `README.zh-CN.md`
+- Create: `docs/assets/admission-control.png`
 - Create: `docs/architecture.md`
 - Create: `docs/compatibility.md`
 - Modify: `compatibility/ecosystem-audit.md`
@@ -1564,7 +1564,7 @@ Both begin with the same truth banner:
 
 > Strict requires the protocol-v1 admission seam. Audit works on stock DSH and does not enforce limits.
 
-Then include #131 scope, exact default guarantees, non-goals, the install command `dsh plugin --profile web add ./dsh-subagent-admission-0.1.0-rc.1.tgz`, compatibility/coverage matrices, and links to raw conformance/crash/benchmark evidence. Embed the Task 13 packed-install screenshot with a caption that says it proves only GUI installation/rendering; do not substitute a mock. `sync-package-docs.mts` copies concise package-facing English/Chinese READMEs and the repository MIT `LICENSE` into the nested package, then verifies byte equality for the license and mode-truth/install sections before packing. Extend the package `files` allowlist with both READMEs, `LICENSE`, `lib/typert.host.js`, `lib/typert.host.d.ts`, `lib/typert.remote-client.js`, and `lib/typert.remote-client.d.ts`; do not replace it with a broad `lib` directory entry.
+Then include #131 scope, exact default guarantees, non-goals, the install command `dsh plugin --profile web add ./dsh-subagent-admission-0.1.0-rc.1.tgz`, compatibility/coverage matrices, and links to raw conformance/crash/benchmark evidence. Embed the final screenshot promoted in Step 7 from a fresh packed-install candidate, with a caption that says it proves only GUI installation/rendering; do not substitute a mock. `sync-package-docs.mts` copies concise package-facing English/Chinese READMEs and the repository MIT `LICENSE` into the nested package, then verifies byte equality for the license and mode-truth/install sections before packing. Extend the package `files` allowlist with both READMEs, `LICENSE`, `lib/typert.host.js`, `lib/typert.host.d.ts`, `lib/typert.remote-client.js`, and `lib/typert.remote-client.d.ts`; do not replace it with a broad `lib` directory entry.
 
 - [ ] **Step 4: Write architecture, compatibility, seam, reproduction, security, and attribution docs**
 
@@ -1574,7 +1574,7 @@ Repeat Task 1's direct-source ecosystem scan immediately before the release gate
 
 - [ ] **Step 5: Implement the evidence aggregator**
 
-`release-evidence.mts --run` invokes the exact pinned commands and writes these ignored working files: `evidence/conformance.json`, `evidence/crash-json.json`, `evidence/crash-sqlite.json`, `evidence/packed-install.json`, `evidence/benchmark.json`, `evidence/reproduction-strict.json`, and `evidence/admission-control.png`. The packed-install producer captures that PNG from the current tarball. The aggregator requires its SHA-256 to equal the visually inspected `docs/assets/admission-control.png` and requires the report's `lib/client.js` hash to equal the freshly packed client bundle, then constructs the manifest from resolved values:
+`release-evidence.mts --run` invokes the exact pinned commands and writes these ignored working files: `evidence/conformance.json`, `evidence/crash-json.json`, `evidence/crash-sqlite.json`, `evidence/packed-install.json`, `evidence/benchmark.json`, `evidence/reproduction-strict.json`, and `evidence/admission-control.png`. The packed-install producer captures that PNG from the current tarball. Before promotion, the aggregator validates the candidate screenshot and requires the report's `lib/client.js` hash to equal the freshly packed client bundle, then constructs the manifest from resolved values:
 
 ```ts
 const manifest: ReleaseEvidenceV1 = {
@@ -1591,9 +1591,37 @@ const manifest: ReleaseEvidenceV1 = {
 }
 ```
 
-`requiredEvidence` is the fixed typed list of those seven generated paths. Conformance and the three installation-or-crash reports must be `pass`; benchmark and strict-only reproduction must be `measured`; the screenshot is `captured` and carries the Task 13 visual-QA label without a human-review claim. The script rejects missing, stale, failed, path-escaping, screenshot-mismatched, client-bundle-mismatched, or identity-mismatched input artifacts. `--manifest-only` performs validation and hashing without rerunning the producers.
+`requiredEvidence` is the fixed typed list of those seven generated paths. Conformance and the three installation-or-crash reports must be `pass`; benchmark and strict-only reproduction must be `measured`; the screenshot is `captured` and carries an agent visual-QA label without a human-review claim. The script rejects missing, stale, failed, path-escaping, client-bundle-mismatched, or identity-mismatched input artifacts. After the fresh ignored PNG passes native-resolution visual inspection, `--promote-gui docs/assets/admission-control.png` revalidates the complete candidate and atomically copies those exact bytes into the tracked documentation path; it must never recapture or accept a different source. Once the tracked image exists, both `--run` and `--manifest-only` require exact screenshot hash equality. `--manifest-only` performs validation and hashing without rerunning the producers.
 
-- [ ] **Step 6: Run the complete local release candidate gate**
+- [ ] **Step 6: Run the pre-promotion local release candidate gate**
+
+Run:
+
+```bash
+corepack pnpm baseline:check
+corepack pnpm lint
+corepack pnpm typecheck
+corepack pnpm vitest run --exclude tests/docs.spec.ts
+corepack pnpm test:e2e
+corepack pnpm build
+corepack pnpm tsx scripts/sync-package-docs.mts --check
+corepack pnpm pack:plugin
+corepack pnpm tsx scripts/release-evidence.mts --run --output evidence/release-candidate.json
+```
+
+Expected: all non-documentation supported local gates PASS and a fresh ignored `evidence/admission-control.png` is bound to the current tarball; platform-limited checks remain explicitly labelled.
+
+- [ ] **Step 7: Inspect and promote the exact GUI candidate**
+
+Inspect `evidence/admission-control.png` at native 1440x900 resolution. Require readable mode/enforcement truth, no clipped cards or tables, visible focus state, and no displacement of Chat or Trajectory. Record this as agent visual QA only. Then run:
+
+```bash
+corepack pnpm tsx scripts/release-evidence.mts --manifest-only --promote-gui docs/assets/admission-control.png --output evidence/release-candidate.json
+```
+
+Expected: the tracked PNG is byte-identical to the inspected ignored candidate and remains labelled as GUI rendering evidence, not enforcement or human-review evidence.
+
+- [ ] **Step 8: Run the complete gate, stage, and inspect**
 
 Run:
 
@@ -1606,14 +1634,14 @@ corepack pnpm test:e2e
 corepack pnpm build
 corepack pnpm tsx scripts/sync-package-docs.mts --check
 corepack pnpm pack:plugin
-corepack pnpm tsx scripts/release-evidence.mts --run --output evidence/release-candidate.json
+corepack pnpm tsx scripts/release-evidence.mts --manifest-only --output evidence/release-candidate.json
 git add README.md README.zh-CN.md docs compatibility/ecosystem-audit.md SECURITY.md CHANGELOG.md LICENSE THIRD_PARTY_NOTICES.md scripts/sync-package-docs.mts scripts/release-evidence.mts evidence/.gitkeep packages/dsh-subagent-admission/package.json packages/dsh-subagent-admission/README.md packages/dsh-subagent-admission/README.zh-CN.md packages/dsh-subagent-admission/LICENSE tests/docs.spec.ts
 git diff --cached --check
 ```
 
-Expected: all supported local gates PASS; the generated evidence identifies platform-limited checks and does not claim macOS/Windows CI until those jobs pass.
+Expected: all supported local gates PASS; the tracked screenshot hash equals the visually inspected ignored candidate; generated evidence identifies platform-limited checks and does not claim macOS/Windows CI until those jobs pass.
 
-- [ ] **Step 7: Commit the release-candidate documentation**
+- [ ] **Step 9: Commit the release-candidate documentation**
 
 ```bash
 git commit -m "docs: prepare admission release candidate"
@@ -1621,7 +1649,7 @@ git commit -m "docs: prepare admission release candidate"
 
 Stop here. Do not push, publish, tag, create a GitHub repository/release, alter the profile, reply to #131, or post externally. Present fresh gate output and request separate release authorization.
 
-- [ ] **Step 8: Rebind the ignored evidence manifest to the committed candidate**
+- [ ] **Step 10: Rebind the ignored evidence manifest to the committed candidate**
 
 Run:
 
