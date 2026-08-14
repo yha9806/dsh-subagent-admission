@@ -23,8 +23,16 @@ export class LedgerOperationalError extends Error {
   readonly code: LedgerErrorCode
   readonly rootSessionId: string
   readonly parentSessionId: string
+  readonly observedValue: number
+  readonly limit: number
 
-  constructor(code: LedgerErrorCode, rootSessionId: string, parentSessionId: string) {
+  constructor(
+    code: LedgerErrorCode,
+    rootSessionId: string,
+    parentSessionId: string,
+    observedValue = 0,
+    limit = 0,
+  ) {
     super(`Ledger operational error: ${code}`)
     Object.defineProperty(this, 'name', {
       value: 'LedgerOperationalError',
@@ -35,6 +43,8 @@ export class LedgerOperationalError extends Error {
     this.code = code
     this.rootSessionId = rootSessionId
     this.parentSessionId = parentSessionId
+    this.observedValue = observedValue
+    this.limit = limit
     Object.freeze(this)
   }
 }
@@ -133,10 +143,22 @@ export class RootLedgerStore {
     const parentCount = typeof rawCount === 'number' ? rawCount : 0
 
     if (admittedTotal >= input.limits.perRootAdmittedTotal) {
-      throw new LedgerOperationalError('ROOT_TOTAL_LIMIT', input.rootSessionId, input.parentSessionId)
+      throw new LedgerOperationalError(
+        'ROOT_TOTAL_LIMIT',
+        input.rootSessionId,
+        input.parentSessionId,
+        admittedTotal,
+        input.limits.perRootAdmittedTotal,
+      )
     }
     if (parentCount >= input.limits.perParentChildren) {
-      throw new LedgerOperationalError('PARENT_CHILD_LIMIT', input.rootSessionId, input.parentSessionId)
+      throw new LedgerOperationalError(
+        'PARENT_CHILD_LIMIT',
+        input.rootSessionId,
+        input.parentSessionId,
+        parentCount,
+        input.limits.perParentChildren,
+      )
     }
 
     const callbackResult = assertActiveCapacity()

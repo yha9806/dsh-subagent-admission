@@ -64,7 +64,11 @@ export function ledgerContract(open: () => Promise<LedgerFixture>): void {
         }
         await expect(
           reserve(fx.ledger, { rootSessionId: 'root-parent-cap', now: 9 }),
-        ).rejects.toMatchObject({ code: 'PARENT_CHILD_LIMIT' })
+        ).rejects.toMatchObject({
+          code: 'PARENT_CHILD_LIMIT',
+          observedValue: 8,
+          limit: 8,
+        })
         expect(fx.probe.writes).toBe(8)
 
         const capped = (await fx.ledger.read('root-parent-cap')) as RootLedgerRow
@@ -82,7 +86,11 @@ export function ledgerContract(open: () => Promise<LedgerFixture>): void {
         await reserve(fx.ledger, { rootSessionId: 'root-total-first', limits: tight, now: 1 })
         await expect(
           reserve(fx.ledger, { rootSessionId: 'root-total-first', limits: tight, now: 2 }),
-        ).rejects.toMatchObject({ code: 'ROOT_TOTAL_LIMIT' })
+        ).rejects.toMatchObject({
+          code: 'ROOT_TOTAL_LIMIT',
+          observedValue: 1,
+          limit: 1,
+        })
         expect(fx.probe.writes).toBe(9)
       } finally {
         await fx.dispose()
