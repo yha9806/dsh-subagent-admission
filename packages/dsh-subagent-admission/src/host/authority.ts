@@ -107,14 +107,29 @@ class SerialSection {
 }
 
 class AdmissionPermit implements SubagentAdmissionPermitV1 {
-  private readonly authority: AdmissionAuthority
-  private readonly lease: ActiveLease
+  private readonly bind: (binding: {
+    readonly childSessionId: string
+    readonly localParentSessionId?: string
+  }) => void
+  private readonly releaseOnce: (reason: AdmissionReleaseReason) => Promise<void>
+  private readonly recordDuplicate: (reason: AdmissionReleaseReason) => void
+  private readonly rejectBinding: () => AdmissionAuthorityError
   private releaseStarted = false
   private releasePromise: Promise<void> | undefined
 
-  constructor(authority: AdmissionAuthority, lease: ActiveLease) {
-    this.authority = authority
-    this.lease = lease
+  constructor(callbacks: {
+    readonly bind: (binding: {
+      readonly childSessionId: string
+      readonly localParentSessionId?: string
+    }) => void
+    readonly release: (reason: AdmissionReleaseReason) => Promise<void>
+    readonly recordDuplicate: (reason: AdmissionReleaseReason) => void
+    readonly rejectBinding: () => AdmissionAuthorityError
+  }) {
+    this.bind = callbacks.bind
+    this.releaseOnce = callbacks.release
+    this.recordDuplicate = callbacks.recordDuplicate
+    this.rejectBinding = callbacks.rejectBinding
   }
 
   bindChild(binding: {
@@ -122,19 +137,19 @@ class AdmissionPermit implements SubagentAdmissionPermitV1 {
     readonly localParentSessionId?: string
   }): void {
     if (this.releaseStarted) {
-      throw this.authority.bindingConflict(this.lease)
+      throw this.rejectBinding()
     }
-    this.authority.bindLease(this.lease, binding)
+    this.bind(binding)
   }
 
   release(reason: AdmissionReleaseReason): Promise<void> {
     if (this.releasePromise !== undefined) {
       return this.releasePromise.then(() => {
-        this.authority.recordDuplicateRelease(this.lease, reason)
+        this.recordDuplicate(reason)
       })
     }
     this.releaseStarted = true
-    this.releasePromise = this.authority.releaseLease(this.lease, reason)
+    this.releasePromise = this.releaseOnce(reason)
     return this.releasePromise
   }
 }
@@ -223,6 +238,10 @@ export class AdmissionAuthority implements SubagentAdmissionPolicyV1 {
         }
         resolvedRootId = lineage.rootSessionId
 
+        if (request.childSessionId !== undefined) {
+          this.leases.assertChildAvailable(request.childSessionId)
+        }
+
         const admittedAt = this.authoritativeNow(request, resolvedRootId)
         if (request.operation === 'cold-resume') {
           this.leases.assertRootThenGlobalCapacity(
@@ -288,7 +307,17 @@ export class AdmissionAuthority implements SubagentAdmissionPolicyV1 {
           duplicate: false,
         }),
       )
-      return new AdmissionPermit(this, lease)
+      return new AdmissionPermit({
+        bind: (binding): void => {
+          this.bindLease(lease, binding)
+        },
+        release: (reason): Promise<void> => this.releaseLease(lease, reason),
+        recordDuplicate: (reason): void => {
+          this.recordDuplicateRelease(lease, reason)
+        },
+        rejectBinding: (): AdmissionAuthorityError =>
+          this.bindingConflict(lease),
+      })
     } catch (error) {
       const normalized = this.normalizeError(error, request, resolvedRootId)
       if (pendingDiagnostic !== undefined) {
@@ -316,27 +345,29 @@ export class AdmissionAuthority implements SubagentAdmissionPolicyV1 {
     return this.drainPromise
   }
 
-  bindLease(
+  private bindLease(
     lease: ActiveLease,
     binding: {
       readonly childSessionId: string
       readonly localParentSessionId?: string
     },
   ): void {
-    const current = this.leases.get(lease.permitId)
     if (
-      current === undefined ||
-      binding.childSessionId.length === 0 ||
-      (binding.localParentSessionId !== undefined &&
-        binding.localParentSessionId !== lease.parentSessionId) ||
-      (lease.expectedChildSessionId !== null &&
-        lease.expectedChildSessionId !== binding.childSessionId) ||
-      (current.childSessionId !== null &&
-        current.childSessionId !== binding.childSessionId)
+      binding.localParentSessionId !== undefined &&
+      binding.localParentSessionId !== lease.parentSessionId
     ) {
       throw this.bindingConflict(lease)
     }
-    if (current.childSessionId === binding.childSessionId) {
+    let inspection: ReturnType<ActiveLeaseRegistry['inspectBinding']>
+    try {
+      inspection = this.leases.inspectBinding(
+        lease.permitId,
+        binding.childSessionId,
+      )
+    } catch {
+      throw this.bindingConflict(lease)
+    }
+    if (inspection === 'duplicate') {
       return
     }
 
@@ -355,7 +386,7 @@ export class AdmissionAuthority implements SubagentAdmissionPolicyV1 {
     }
   }
 
-  bindingConflict(lease: ActiveLease): AdmissionAuthorityError {
+  private bindingConflict(lease: ActiveLease): AdmissionAuthorityError {
     return new AdmissionAuthorityError(
       createAdmissionDenied({
         code: ADMISSION_ERROR_CODES.ADMISSION_BINDING_CONFLICT,
@@ -370,7 +401,7 @@ export class AdmissionAuthority implements SubagentAdmissionPolicyV1 {
     )
   }
 
-  async releaseLease(
+  private async releaseLease(
     lease: ActiveLease,
     reason: AdmissionReleaseReason,
   ): Promise<void> {
@@ -398,7 +429,7 @@ export class AdmissionAuthority implements SubagentAdmissionPolicyV1 {
     this.emitRelease(removed ?? lease, reason, removed === undefined)
   }
 
-  recordDuplicateRelease(
+  private recordDuplicateRelease(
     lease: ActiveLease,
     reason: AdmissionReleaseReason,
   ): void {

@@ -466,6 +466,76 @@ describe('AdmissionAuthority prepare ordering', () => {
 })
 
 describe('AdmissionPermit binding and release', () => {
+  it('rejects a duplicate known child before another cumulative write or active lease', async () => {
+    const f = authorityFixture()
+    const first = await f.authority.prepare(
+      request('new-continuable', 'p', 'reserved-child'),
+    )
+
+    await expect(
+      f.authority.prepare(
+        request('new-continuable', 'p', 'reserved-child'),
+      ),
+    ).rejects.toMatchObject({
+      code: 'ADMISSION_BINDING_CONFLICT',
+      observedValue: 1,
+      limit: 1,
+    })
+    expect(f.ledger.writes).toBe(1)
+    expect(f.leases.size).toBe(1)
+
+    await first.release('disposed')
+  })
+
+  it('allows only one live cold-resume permit for the same existing child', async () => {
+    const f = authorityFixture()
+    const first = await f.authority.prepare(
+      request('cold-resume', 'p', 'existing-child'),
+    )
+
+    await expect(
+      f.authority.prepare(
+        request('cold-resume', 'p', 'existing-child'),
+      ),
+    ).rejects.toMatchObject({ code: 'ADMISSION_BINDING_CONFLICT' })
+    expect(f.ledger.writes).toBe(0)
+    expect(f.leases.size).toBe(1)
+
+    await first.release('disposed')
+    const resumedAgain = await f.authority.prepare(
+      request('cold-resume', 'p', 'existing-child'),
+    )
+    await resumedAgain.release('completed')
+  })
+
+  it('rejects two otherwise valid permits binding the same live child', async () => {
+    const f = authorityFixture()
+    const first = await f.authority.prepare(request('new-one-shot'))
+    const second = await f.authority.prepare(request('new-one-shot'))
+
+    first.bindChild({
+      childSessionId: 'published-child',
+      localParentSessionId: 'p',
+    })
+    expect(
+      captureSyncError(() =>
+        second.bindChild({
+          childSessionId: 'published-child',
+          localParentSessionId: 'p',
+        }),
+      ),
+    ).toMatchObject({ code: 'ADMISSION_BINDING_CONFLICT' })
+    expect(f.roots.bindings).toHaveLength(1)
+    expect(
+      f.leases
+        .snapshot()
+        .filter((lease) => lease.childSessionId === 'published-child'),
+    ).toHaveLength(1)
+
+    await first.release('disposed')
+    await second.release('startup-failed')
+  })
+
   it('binds at most once, accepts an identical repeat, and rejects conflicts', async () => {
     const f = authorityFixture()
     const permit = await f.authority.prepare(

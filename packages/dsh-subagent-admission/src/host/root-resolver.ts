@@ -84,8 +84,11 @@ export class DurableRootResolver implements RootResolution {
   private readonly headers: SessionHeaderReader
   /** Durable lineages, populated only after a whole chain succeeds. */
   private readonly resolved = new Map<string, ResolvedLineage>()
-  /** Telemetry-only child-to-root claims recorded by `bindChild`. */
-  private readonly boundRoots = new Map<string, string>()
+  /** Telemetry-only immutable child ownership claims recorded by `bindChild`. */
+  private readonly boundChildren = new Map<
+    string,
+    { readonly rootSessionId: string; readonly parentSessionId: string }
+  >()
 
   constructor(headers: SessionHeaderReader) {
     this.headers = headers
@@ -149,12 +152,22 @@ export class DurableRootResolver implements RootResolution {
       localParentSessionId,
     } = input
 
-    const boundRoot = this.boundRoots.get(childSessionId)
-    if (boundRoot !== undefined) {
-      if (boundRoot !== expectedRootSessionId) {
+    if (
+      localParentSessionId !== undefined &&
+      localParentSessionId !== expectedParentSessionId
+    ) {
+      failConflict(childSessionId)
+    }
+
+    const boundChild = this.boundChildren.get(childSessionId)
+    if (boundChild !== undefined) {
+      if (
+        boundChild.rootSessionId !== expectedRootSessionId ||
+        boundChild.parentSessionId !== expectedParentSessionId
+      ) {
         failConflict(childSessionId)
       }
-      // Same-root repeat: idempotent.
+      // Same root and parent repeat: idempotent.
       return
     }
 
@@ -162,13 +175,6 @@ export class DurableRootResolver implements RootResolution {
     if (
       resolvedChild !== undefined &&
       resolvedChild.rootSessionId !== expectedRootSessionId
-    ) {
-      failConflict(childSessionId)
-    }
-
-    if (
-      localParentSessionId !== undefined &&
-      localParentSessionId !== expectedParentSessionId
     ) {
       failConflict(childSessionId)
     }
@@ -181,7 +187,13 @@ export class DurableRootResolver implements RootResolution {
       failConflict(childSessionId)
     }
 
-    this.boundRoots.set(childSessionId, expectedRootSessionId)
+    this.boundChildren.set(
+      childSessionId,
+      Object.freeze({
+        rootSessionId: expectedRootSessionId,
+        parentSessionId: expectedParentSessionId,
+      }),
+    )
   }
 
   /**

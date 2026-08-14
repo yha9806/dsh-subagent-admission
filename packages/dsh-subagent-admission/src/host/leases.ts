@@ -30,6 +30,8 @@ export class ActiveCapacityError extends Error {
 
 export class LeaseBindingConflict extends Error {
   readonly code = 'ADMISSION_BINDING_CONFLICT' as const
+  readonly observedValue = 1
+  readonly limit = 1
 
   constructor() {
     super('Admission lease binding conflict')
@@ -66,6 +68,7 @@ export interface ActiveLeaseInsert {
 }
 
 export type LeaseBindResult = 'bound' | 'duplicate'
+export type LeaseBindInspection = 'available' | 'duplicate'
 
 /**
  * Process-local authoritative active ownership.
@@ -78,6 +81,7 @@ export type LeaseBindResult = 'bound' | 'duplicate'
 export class ActiveLeaseRegistry {
   private readonly leases = new Map<string, ActiveLease>()
   private readonly activeByRoot = new Map<string, number>()
+  private readonly childClaims = new Map<string, string>()
   private readonly emptyWaiters = new Set<() => void>()
   private permitCounter = 0
   private draining = false
@@ -121,6 +125,14 @@ export class ActiveLeaseRegistry {
     if (this.leases.has(permitId)) {
       throw new Error('duplicate admission permit id')
     }
+    const claimedChildSessionId =
+      input.expectedChildSessionId ?? input.initialChildSessionId
+    if (
+      claimedChildSessionId !== undefined &&
+      this.childClaims.has(claimedChildSessionId)
+    ) {
+      throw new LeaseBindingConflict()
+    }
     const lease = freezeLease({
       permitId,
       requestId: input.requestId,
@@ -135,6 +147,9 @@ export class ActiveLeaseRegistry {
     const rootActive = this.rootActive(input.rootSessionId)
     this.leases.set(permitId, lease)
     this.activeByRoot.set(input.rootSessionId, rootActive + 1)
+    if (claimedChildSessionId !== undefined) {
+      this.childClaims.set(claimedChildSessionId, permitId)
+    }
     this.permitCounter += 1
     return lease
   }
@@ -143,7 +158,19 @@ export class ActiveLeaseRegistry {
     return this.leases.get(permitId)
   }
 
-  bind(permitId: string, childSessionId: string): LeaseBindResult {
+  assertChildAvailable(childSessionId: string): void {
+    if (
+      childSessionId.length === 0 ||
+      this.childClaims.has(childSessionId)
+    ) {
+      throw new LeaseBindingConflict()
+    }
+  }
+
+  inspectBinding(
+    permitId: string,
+    childSessionId: string,
+  ): LeaseBindInspection {
     const lease = this.leases.get(permitId)
     if (lease === undefined || childSessionId.length === 0) {
       throw new LeaseBindingConflict()
@@ -154,16 +181,30 @@ export class ActiveLeaseRegistry {
     ) {
       throw new LeaseBindingConflict()
     }
+    const claimant = this.childClaims.get(childSessionId)
+    if (claimant !== undefined && claimant !== permitId) {
+      throw new LeaseBindingConflict()
+    }
     if (lease.childSessionId === childSessionId) {
       return 'duplicate'
     }
     if (lease.childSessionId !== null) {
       throw new LeaseBindingConflict()
     }
+    return 'available'
+  }
+
+  bind(permitId: string, childSessionId: string): LeaseBindResult {
+    const inspection = this.inspectBinding(permitId, childSessionId)
+    if (inspection === 'duplicate') {
+      return 'duplicate'
+    }
+    const lease = this.leases.get(permitId) as ActiveLease
     this.leases.set(
       permitId,
       freezeLease({ ...lease, childSessionId }),
     )
+    this.childClaims.set(childSessionId, permitId)
     return 'bound'
   }
 
@@ -181,6 +222,17 @@ export class ActiveLeaseRegistry {
       this.activeByRoot.delete(lease.rootSessionId)
     } else {
       this.activeByRoot.set(lease.rootSessionId, rootActive - 1)
+    }
+    for (const childSessionId of [
+      lease.expectedChildSessionId,
+      lease.childSessionId,
+    ]) {
+      if (
+        childSessionId !== null &&
+        this.childClaims.get(childSessionId) === permitId
+      ) {
+        this.childClaims.delete(childSessionId)
+      }
     }
     if (this.leases.size === 0) {
       const waiters = [...this.emptyWaiters]
@@ -238,7 +290,10 @@ function assertInsert(input: ActiveLeaseInsert): void {
     (input.expectedChildSessionId === undefined ||
       input.expectedChildSessionId.length > 0) &&
     (input.initialChildSessionId === undefined ||
-      input.initialChildSessionId.length > 0)
+      input.initialChildSessionId.length > 0) &&
+    (input.expectedChildSessionId === undefined ||
+      input.initialChildSessionId === undefined ||
+      input.expectedChildSessionId === input.initialChildSessionId)
   if (!valid) {
     throw new Error('invalid active lease insertion')
   }

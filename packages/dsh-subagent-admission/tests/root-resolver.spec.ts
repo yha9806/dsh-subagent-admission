@@ -264,7 +264,7 @@ describe('DurableRootResolver.bindChild', () => {
     ).not.toThrow()
   })
 
-  it('caches the first valid binding, is idempotent for the same root, and rejects a different root', () => {
+  it('caches the first valid binding, is idempotent for the same root and parent, and rejects ownership changes', () => {
     const { resolver } = resolverFor({})
     resolver.bindChild({
       childSessionId: 'child',
@@ -283,6 +283,21 @@ describe('DurableRootResolver.bindChild', () => {
         childSessionId: 'child',
         expectedParentSessionId: 'parent',
         expectedRootSessionId: 'other',
+      }),
+    )
+    expectBindingConflict(() =>
+      resolver.bindChild({
+        childSessionId: 'child',
+        expectedParentSessionId: 'other-parent',
+        expectedRootSessionId: 'root',
+      }),
+    )
+    expectBindingConflict(() =>
+      resolver.bindChild({
+        childSessionId: 'child',
+        expectedParentSessionId: 'parent',
+        expectedRootSessionId: 'root',
+        localParentSessionId: 'other-parent',
       }),
     )
   })
