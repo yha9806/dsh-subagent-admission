@@ -4,7 +4,13 @@ All notable changes to this project are documented here. The project follows
 semantic versioning only after a version is actually published; local release
 candidates do not imply npm availability or upstream adoption.
 
-## Unreleased
+## 0.1.0-rc.1 — 2026-08-14
+
+GitHub prerelease for the reference implementation, conformance system, and
+upstream design prototype. Source and reproducible local package artifacts are
+public, but the package is not published to npm. This prerelease does not imply
+DeepSeek adoption, maintainer endorsement, production deployment, or a
+zero-patch Strict installation path.
 
 ### Changed
 
@@ -33,11 +39,6 @@ candidates do not imply npm availability or upstream adoption.
 - Enabled the reviewed, exact-lock `node-pty` Linux native build and
   `dsh-subprocess-local` helper-permission scripts required by the packed stock
   Web acceptance gate.
-
-## 0.1.0-rc.1 — 2026-08-14
-
-Package release candidate; source is public, but the package is not published
-to npm.
 
 ### Added
 

@@ -47,10 +47,10 @@ its callers.
 
 - URL: `https://github.com/deepseek-ai/deepseek-harness/discussions/131`
 - State: open
-- Comments: 4 API rows
-- Upvotes: 5 in the canonical HTML baseline
-- `updated_at`: `2026-08-14T03:55:21Z`
-- Comment author associations: all four `NONE`
+- Comments: 5 API rows
+- Upvotes: 6 in the canonical HTML baseline
+- `updated_at`: `2026-08-14T17:20:20Z`
+- Comment author associations: all five `NONE`
 - Maintainer-associated comments: 0
 
 The report remains a concrete official-channel demand anchor, not a maintainer

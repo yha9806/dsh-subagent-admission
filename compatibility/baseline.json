@@ -5,11 +5,11 @@
     "commentsUrl": "https://api.github.com/repos/deepseek-ai/deepseek-harness/discussions/131/comments",
     "id": 10606879,
     "maintainerCommentCount": 0,
-    "observedAt": "2026-08-14T18:08:58.991Z",
+    "observedAt": "2026-08-14T18:49:37.555Z",
     "state": "open",
     "updatedAt": "2026-08-14T17:20:20Z",
     "url": "https://github.com/deepseek-ai/deepseek-harness/discussions/131",
-    "votes": 5
+    "votes": 6
   },
   "npm": {
     "@deepseek-ai/dsh": {
@@ -21,7 +21,7 @@
       "next": "0.1.0-rc.6"
     }
   },
-  "observedAt": "2026-08-14T18:08:58.990Z",
+  "observedAt": "2026-08-14T18:49:37.554Z",
   "schemaVersion": 1,
   "source": {
     "commit": "47f943859bef60e4160492346772ded9b24f765a",
