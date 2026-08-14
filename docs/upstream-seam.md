@@ -136,7 +136,8 @@ that philosophy:
 The upstream proposal artifacts are:
 
 - [Proposed Agent Note](upstream-agent-note.md) — formal Service Definition, Provider, and Consumer specification;
-- [Discussion #131 draft](discussion-131-draft.md) — evidence-first discussion draft.
+- [Published Discussion #131 reply source](discussion-131-draft.md) — tracked
+  source for the authorized [public reply](https://github.com/deepseek-ai/deepseek-harness/discussions/131#discussioncomment-18020293).
 
 This effort is complementary to [`dsh-turn-budget`](https://github.com/Nunchakus888/dsh-turn-budget),
 which provides an immediately installable per-turn circuit breaker on stock DSH.
@@ -151,8 +152,9 @@ The current [official contribution guide](https://github.com/deepseek-ai/deepsee
 does not accept external pull requests and instead directs community work
 toward Discussions, independent plugins, the `dsh-plugin` topic, and technical
 write-ups. This repository therefore ships the independent experiment and
-concise design note first. It has not submitted a PR, tag, package release, or
-official Discussion proposal.
+concise design note first. It has published the authorized Discussion reply,
+but it has not submitted a PR, tag, or package release, and no maintainer reply
+or official adoption has been observed.
 
 ## Reproducible RED/GREEN verification
 
