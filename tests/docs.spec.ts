@@ -98,7 +98,7 @@ describe('release-candidate documentation', () => {
 
   it('pins the exact source, protocol, patch, and source/npm divergence', () => {
     const baseline = json('compatibility/baseline.json')
-    const patchHash = sha256('patches/dsh-subagent-admission-seam.patch')
+    const patchHash = sha256('patches/dsh-subagent-admission-seam-slim.patch')
     expect(baseline.source.commit).toBe('47f943859bef60e4160492346772ded9b24f765a')
     expect(baseline.source.packageVersion).toBe('0.1.0-rc.5')
     expect(baseline.npm['@deepseek-ai/dsh'].next).toBe('0.1.0-rc.6')
@@ -106,6 +106,7 @@ describe('release-candidate documentation', () => {
     expect(baseline.strictTargets).toEqual([expect.objectContaining({
       protocolVersion: 1,
       patchSha256: patchHash,
+      verificationCommand: 'corepack pnpm tsx scripts/verify-seam-patch.mts --patch slim',
     })])
     for (const relativePath of [
       'README.md',

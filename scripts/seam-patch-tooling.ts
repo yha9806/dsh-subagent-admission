@@ -1,6 +1,6 @@
 export type SeamPatchName = 'reference' | 'slim'
 
-export const DEFAULT_SEAM_PATCH: SeamPatchName = 'reference'
+export const DEFAULT_SEAM_PATCH: SeamPatchName = 'slim'
 
 export const OFFICIAL_SEAM_FILES = Object.freeze([
   'packages/subagent/subagent/src/continuation.ts',

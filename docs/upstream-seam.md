@@ -19,16 +19,16 @@ few lines of plumbing or that users should maintain this fork shape forever.
 
 ## Verified target
 
-| Fact | Reference baseline | Slim candidate |
+| Fact | Canonical baseline (slim) | Recoverable reference |
 | --- | --- | --- |
 | Official repository | `https://github.com/deepseek-ai/deepseek-harness.git` | `https://github.com/deepseek-ai/deepseek-harness.git` |
 | Source commit | `47f943859bef60e4160492346772ded9b24f765a` | `47f943859bef60e4160492346772ded9b24f765a` |
 | Source package | `@deepseek-ai/dsh-subagent@0.1.0-rc.5` | `@deepseek-ai/dsh-subagent@0.1.0-rc.5` |
-| Patch file | `patches/dsh-subagent-admission-seam.patch` | `patches/dsh-subagent-admission-seam-slim.patch` |
-| Patch SHA-256 | `1340a9ffabde8310f68a7d66c4dacecda5dba263dd51666740801f5ec2c69135` | `b29860806eb446dc4df1789565c26192b808d638cf404b237c447df10f75c215` |
+| Patch file | `patches/dsh-subagent-admission-seam-slim.patch` | `patches/dsh-subagent-admission-seam.patch` |
+| Patch SHA-256 | `b29860806eb446dc4df1789565c26192b808d638cf404b237c447df10f75c215` | `1340a9ffabde8310f68a7d66c4dacecda5dba263dd51666740801f5ec2c69135` |
 | Protocol | `1` | `1` |
-| Status | Canonical, recoverable baseline | Qualified candidate (pre-promotion) |
-| Verification | `corepack pnpm tsx scripts/verify-seam-patch.mts --patch reference` | `corepack pnpm tsx scripts/verify-seam-patch.mts --patch slim` |
+| Status | Canonical baseline (promoted) | Recoverable reference artifact |
+| Verification | `corepack pnpm tsx scripts/verify-seam-patch.mts --patch slim` | `corepack pnpm tsx scripts/verify-seam-patch.mts --patch reference` |
 
 The source and npm `next` identities are intentionally separate in
 `compatibility/baseline.json`; a later source or package version is not silently
@@ -105,14 +105,14 @@ Both patches modify exactly three official source files:
 
 Measured comparison:
 
-| Metric | Reference patch | Slim candidate | Slim limit |
+| Metric | Canonical baseline (slim) | Recoverable reference | Slim limit |
 | --- | ---: | ---: | ---: |
 | Official files | 3 | 3 | <= 3 |
-| Insertions | 380 | 202 | — |
-| Deletions | 38 | 23 | — |
-| Changed lines | 418 | 225 | <= 313 |
-| `continuation.ts` changed lines | 187 | 101 | <= 140 |
-| Serialized patch lines | 607 | 448 | <= 455 |
+| Insertions | 202 | 380 | — |
+| Deletions | 23 | 38 | — |
+| Changed lines | 225 | 418 | <= 313 |
+| `continuation.ts` changed lines | 101 | 187 | <= 140 |
+| Serialized patch lines | 448 | 607 | <= 455 |
 
 The protocol concepts are small; lifecycle-correct ownership across fresh start,
 cold resume, partial failure, descendant teardown, cancellation, and quiescent
@@ -165,11 +165,11 @@ directory plus the reusable admission fixture.
 # Prove the fixture detects the missing stock surface.
 corepack pnpm tsx scripts/verify-seam-patch.mts --expect-unpatched-failure
 
-# Preflight, apply, build, and test the reference baseline patch.
-corepack pnpm tsx scripts/verify-seam-patch.mts --patch reference
-
-# Preflight, apply, build, and test the qualified slim candidate patch.
+# Preflight, apply, build, and test the canonical slim baseline patch.
 corepack pnpm tsx scripts/verify-seam-patch.mts --patch slim
+
+# Preflight, apply, build, and test the recoverable reference patch.
+corepack pnpm tsx scripts/verify-seam-patch.mts --patch reference
 ```
 
 On 2026-08-14, the patched run passed 11 test files and 266 tests on macOS arm64

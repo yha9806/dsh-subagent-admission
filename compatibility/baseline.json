@@ -32,11 +32,11 @@
   "status": "source-npm-diverged",
   "strictTargets": [
     {
-      "patchSha256": "1340a9ffabde8310f68a7d66c4dacecda5dba263dd51666740801f5ec2c69135",
+      "patchSha256": "b29860806eb446dc4df1789565c26192b808d638cf404b237c447df10f75c215",
       "protocolVersion": 1,
       "sourceCommit": "47f943859bef60e4160492346772ded9b24f765a",
       "sourcePackageVersion": "0.1.0-rc.5",
-      "verificationCommand": "corepack pnpm tsx scripts/verify-seam-patch.mts"
+      "verificationCommand": "corepack pnpm tsx scripts/verify-seam-patch.mts --patch slim"
     }
   ],
   "strictTargetsCurrent": true

@@ -50,8 +50,8 @@ describe('packed-install seam patch selection', () => {
     expect(refOptions.strictPatch).toBe('reference')
   })
 
-  it('preserves reference as the default seam patch before promotion', () => {
-    expect(DEFAULT_SEAM_PATCH).toBe('reference')
+  it('resolves slim as the default seam patch after promotion', () => {
+    expect(DEFAULT_SEAM_PATCH).toBe('slim')
   })
 
   it('parses explicit reference and slim --strict-patch arguments', () => {

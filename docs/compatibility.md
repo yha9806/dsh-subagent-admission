@@ -14,8 +14,8 @@ The blocking machine-readable source is
 | npm `@deepseek-ai/dsh` latest/next | `0.1.0-rc.6` / `0.1.0-rc.6` |
 | npm `@deepseek-ai/dsh-subagent` latest/next | `0.0.1-rc.1` / `0.1.0-rc.6` |
 | Protocol | `1` |
-| Reference patch (canonical) | `patches/dsh-subagent-admission-seam.patch` (`1340a9ffabde8310f68a7d66c4dacecda5dba263dd51666740801f5ec2c69135`) |
-| Slim candidate (qualified) | `patches/dsh-subagent-admission-seam-slim.patch` (`b29860806eb446dc4df1789565c26192b808d638cf404b237c447df10f75c215`) |
+| Canonical seam patch (slim) | `patches/dsh-subagent-admission-seam-slim.patch` (`b29860806eb446dc4df1789565c26192b808d638cf404b237c447df10f75c215`) |
+| Recoverable reference patch | `patches/dsh-subagent-admission-seam.patch` (`1340a9ffabde8310f68a7d66c4dacecda5dba263dd51666740801f5ec2c69135`) |
 | Plugin candidate | `dsh-subagent-admission@0.1.0-rc.1` |
 
 The official source package at HEAD and npm `next` are different builds. The
@@ -28,8 +28,8 @@ version”.
 | --- | --- | --- | --- |
 | Stock npm rc.6 | Audit | Audit | No |
 | Stock npm rc.6 | Strict | Unavailable: seam absent | No |
-| Exact source rc.5 + verified reference patch | Audit | Audit | No |
-| Exact source rc.5 + verified reference patch + all bootstrap prerequisites | Strict | Strict | Yes |
+| Exact source rc.5 + verified canonical slim patch | Audit | Audit | No |
+| Exact source rc.5 + verified canonical slim patch + all bootstrap prerequisites | Strict | Strict | Yes |
 | Patched/unpatched unknown source or package | Strict | Unavailable: unsupported build | No |
 | Protocol not exactly v1 | Strict | Unavailable: unsupported protocol | No |
 | Missing storage, unsafe lineage, live pre-coverage child, or ownership conflict | Strict | Unavailable with exact reason | No |
@@ -42,8 +42,10 @@ silently becomes Audit.
 - Stock Audit is installable observability only. It cannot prevent a start and
   is not a #131 painkiller.
 - Patched Strict is a verified reference implementation and conformance system
-  for one exact source identity. The seam patch is 607 lines across three
-  official files, including 187 changed lines in `continuation.ts`.
+  for one exact source identity. The canonical slim seam patch is 225 changed lines
+  across three official files (448 serialized patch lines, including 101 changed
+  lines in `continuation.ts`), with the 607-line reference patch retained as a
+  recoverable baseline artifact.
 - A documented official capability that supports **zero-patch Strict** is the
   productization gate. Permanently maintaining a private patched-upstream
   matrix is not the intended sustainable product.
@@ -82,14 +84,14 @@ pnpm baseline:check
 # Prove the test fixture fails against unpatched stock source.
 pnpm exec tsx scripts/verify-seam-patch.mts --expect-unpatched-failure
 
-# Preflight/apply/build/test reference patch in a disposable worktree.
-pnpm exec tsx scripts/verify-seam-patch.mts --patch reference
-
-# Preflight/apply/build/test slim candidate patch in a disposable worktree.
+# Preflight/apply/build/test canonical slim baseline patch in a disposable worktree.
 pnpm exec tsx scripts/verify-seam-patch.mts --patch slim
 
-# Compose packed stock Audit and exact-target Strict.
-pnpm exec tsx scripts/run-strict-conformance.mts --patch slim
+# Preflight/apply/build/test recoverable reference patch in a disposable worktree.
+pnpm exec tsx scripts/verify-seam-patch.mts --patch reference
+
+# Compose packed stock Audit and exact-target Strict (defaults to canonical slim).
+pnpm exec tsx scripts/run-strict-conformance.mts
 
 # Exercise the real package install and native Web integration.
 pnpm test:e2e -- tests/packed-install.e2e.ts

@@ -131,22 +131,22 @@ The bundle defaults to Audit. This command does not make stock DSH enforce
 capacity. Strict is intentionally limited to the exact source target and
 verified seam patches documented in [the upstream seam proposal](docs/upstream-seam.md):
 
-- **Reference patch** (`patches/dsh-subagent-admission-seam.patch`):
-  SHA-256 `1340a9ffabde8310f68a7d66c4dacecda5dba263dd51666740801f5ec2c69135`
-  (current canonical, verified, recoverable baseline)
-- **Slim candidate** (`patches/dsh-subagent-admission-seam-slim.patch`):
+- **Canonical baseline patch (slim)** (`patches/dsh-subagent-admission-seam-slim.patch`):
   SHA-256 `b29860806eb446dc4df1789565c26192b808d638cf404b237c447df10f75c215`
-  (fully qualified candidate, 225 changed lines, not yet baseline)
+  (promoted canonical baseline, 225 changed lines, 448 serialized lines)
+- **Recoverable reference patch** (`patches/dsh-subagent-admission-seam.patch`):
+  SHA-256 `1340a9ffabde8310f68a7d66c4dacecda5dba263dd51666740801f5ec2c69135`
+  (retained recoverable reference artifact, 418 changed lines, 607 serialized lines)
 
 ```bash
 # Prove the fixture is red against the unpatched target.
 pnpm exec tsx scripts/verify-seam-patch.mts --expect-unpatched-failure
 
-# Apply and verify the reference patch in a disposable exact-target worktree.
-pnpm exec tsx scripts/verify-seam-patch.mts --patch reference
-
-# Apply and verify the slim candidate patch in a disposable exact-target worktree.
+# Apply and verify the canonical slim baseline patch in a disposable exact-target worktree.
 pnpm exec tsx scripts/verify-seam-patch.mts --patch slim
+
+# Apply and verify the recoverable reference patch in a disposable exact-target worktree.
+pnpm exec tsx scripts/verify-seam-patch.mts --patch reference
 ```
 
 Neither command calls a model. Installing a tarball, receiving HTTP 200, or
@@ -240,7 +240,7 @@ To propose this optional lifecycle-owned admission capability to DeepSeek Harnes
 - [Proposed Agent Note](docs/upstream-agent-note.md) — formal Service Definition / Provider / Consumer specification of `registerAdmissionPolicy(policy)` and protocol v1;
 - [Discussion #131 draft](docs/discussion-131-draft.md) — concise (150–180 words), evidence-first discussion draft asking one focused extension-point question;
 - [Experimental upstream seam](docs/upstream-seam.md) — detailed call-site analysis and dual-patch qualification data;
-- Verified patches: recoverable reference (`patches/dsh-subagent-admission-seam.patch`) and slim candidate (`patches/dsh-subagent-admission-seam-slim.patch`).
+- Verified patches: canonical slim baseline (`patches/dsh-subagent-admission-seam-slim.patch`) and recoverable reference (`patches/dsh-subagent-admission-seam.patch`).
 
 > **Note on external boundaries:** The presence of a tracked Discussion draft does not authorize posting. No maintainer reply, official PR submission, or adoption has occurred. The architecture maintains an 80% protocol/policy kernel and 20% native GUI split: the GUI is an operator surface, not the product boundary. Zero-patch Strict remains the ultimate productization gate.
 
