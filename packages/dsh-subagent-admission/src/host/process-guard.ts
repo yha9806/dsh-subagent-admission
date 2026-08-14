@@ -25,19 +25,19 @@ export class OwnershipUnavailable extends Error {
 }
 
 export interface OwnerRecord {
-  readonly schemaVersion: number
+  readonly schemaVersion: 1
   readonly pid: number
   readonly nonce: string
   readonly createdAt: number
 }
 
-interface DirectoryIdentity {
+interface FileSystemIdentity {
   readonly dev: number
   readonly ino: number
 }
 
 export const OWNER_FILE = 'owner.json'
-export const OWNER_SCHEMA_VERSION = 1
+export const OWNER_SCHEMA_VERSION = 1 as const
 export const OWNER_NONCE_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 export function parseOwner(text: string): OwnerRecord | undefined {
@@ -55,7 +55,7 @@ export function parseOwner(text: string): OwnerRecord | undefined {
   if (typeof record.nonce !== 'string' || !OWNER_NONCE_PATTERN.test(record.nonce)) return undefined
   if (typeof record.createdAt !== 'number' || !Number.isSafeInteger(record.createdAt) || record.createdAt < 0) return undefined
   return {
-    schemaVersion: record.schemaVersion,
+    schemaVersion: OWNER_SCHEMA_VERSION,
     pid: record.pid,
     nonce: record.nonce,
     createdAt: record.createdAt,
@@ -96,22 +96,6 @@ export async function publishOwner(lockPath: string, record: OwnerRecord): Promi
   }
 }
 
-async function cleanOwnedPath(path: string, record: OwnerRecord): Promise<void> {
-  try {
-    const stats = await lstat(path)
-    if (!stats.isDirectory() || stats.isSymbolicLink()) {
-      return
-    }
-  } catch {
-    return
-  }
-  const existing = await readOwner(path)
-  if (existing.kind === 'ok' && existing.record.nonce === record.nonce) {
-    await unlink(join(path, OWNER_FILE)).catch(() => undefined)
-  }
-  await rmdir(path).catch(() => undefined)
-}
-
 export function makeOwner(): OwnerRecord {
   return {
     schemaVersion: OWNER_SCHEMA_VERSION,
@@ -140,6 +124,18 @@ type OwnerInspection =
   | { kind: 'io' }
   | { kind: 'missing' }
   | { kind: 'dead', record: OwnerRecord }
+
+type PinnedOwnerReadResult =
+  | { kind: 'ok', record: OwnerRecord }
+  | { kind: 'lost' }
+  | { kind: 'io' }
+
+function matchesIdentity(
+  actual: FileSystemIdentity,
+  expected: FileSystemIdentity,
+): boolean {
+  return actual.dev === expected.dev && actual.ino === expected.ino
+}
 
 async function inspectExistingOwner(path: string): Promise<OwnerInspection> {
   try {
@@ -201,14 +197,21 @@ async function quarantineDeadOwner(
 export class ProcessOwnershipGuard {
   private readonly path: string
   private readonly record: OwnerRecord
-  private readonly identity: DirectoryIdentity
+  private readonly directoryIdentity: FileSystemIdentity
+  private readonly ownerIdentity: FileSystemIdentity
   private released = false
   private releasing: Promise<void> | undefined
 
-  private constructor(path: string, record: OwnerRecord, identity: DirectoryIdentity) {
+  private constructor(
+    path: string,
+    record: OwnerRecord,
+    directoryIdentity: FileSystemIdentity,
+    ownerIdentity: FileSystemIdentity,
+  ) {
     this.path = path
     this.record = record
-    this.identity = identity
+    this.directoryIdentity = directoryIdentity
+    this.ownerIdentity = ownerIdentity
   }
 
   static async acquire(path: string): Promise<ProcessOwnershipGuard> {
@@ -242,24 +245,33 @@ export class ProcessOwnershipGuard {
       try {
         await publishOwner(path, record)
       } catch {
-        await unlink(join(path, OWNER_FILE)).catch(() => undefined)
-        await rmdir(path).catch(() => undefined)
         throw new OwnershipUnavailable('owner-io')
       }
       try {
-        const stats = await lstat(path)
-        if (!stats.isDirectory() || stats.isSymbolicLink()) {
+        const directoryStats = await lstat(path)
+        if (!directoryStats.isDirectory() || directoryStats.isSymbolicLink()) {
           throw new OwnershipUnavailable('owner-io')
         }
-        return new ProcessOwnershipGuard(path, record, {
-          dev: stats.dev,
-          ino: stats.ino,
+        const ownerStats = await lstat(join(path, OWNER_FILE))
+        if (!ownerStats.isFile() || ownerStats.isSymbolicLink()) {
+          throw new OwnershipUnavailable('owner-io')
+        }
+        const guard = new ProcessOwnershipGuard(path, record, {
+          dev: directoryStats.dev,
+          ino: directoryStats.ino,
+        }, {
+          dev: ownerStats.dev,
+          ino: ownerStats.ino,
         })
+        const pinned = await guard.readPinnedOwner(path)
+        if (pinned.kind !== 'ok' || pinned.record.nonce !== record.nonce) {
+          throw new OwnershipUnavailable('owner-io')
+        }
+        return guard
       } catch (error) {
         if (error instanceof OwnershipUnavailable) {
           throw error
         }
-        await cleanOwnedPath(path, record)
         throw new OwnershipUnavailable('owner-io')
       }
     }
@@ -270,17 +282,12 @@ export class ProcessOwnershipGuard {
     if (this.released) {
       throw new OwnershipUnavailable('owner-lost')
     }
-    if (!(await this.matchesOwnedDirectory())) {
-      throw new OwnershipUnavailable('owner-lost')
-    }
-    const existing = await readOwner(this.path)
+    const existing = await this.readPinnedOwner(this.path)
     if (existing.kind === 'io') {
       throw new OwnershipUnavailable('owner-io')
     }
     if (existing.kind === 'ok' && existing.record.nonce === this.record.nonce) {
-      if (await this.matchesOwnedDirectory()) {
-        return
-      }
+      return
     }
     throw new OwnershipUnavailable('owner-lost')
   }
@@ -289,16 +296,20 @@ export class ProcessOwnershipGuard {
     if (this.released) {
       return
     }
-    this.releasing ??= this.performRelease()
-    await this.releasing
+    const attempt = this.releasing ?? this.performRelease()
+    this.releasing = attempt
+    try {
+      await attempt
+    } catch (error) {
+      if (this.releasing === attempt) {
+        this.releasing = undefined
+      }
+      throw error
+    }
   }
 
   private async performRelease(): Promise<void> {
-    if (!(await this.matchesOwnedDirectory())) {
-      this.released = true
-      return
-    }
-    const existing = await readOwner(this.path)
+    const existing = await this.readPinnedOwner(this.path)
     if (existing.kind === 'io') {
       throw new OwnershipUnavailable('owner-io')
     }
@@ -306,19 +317,95 @@ export class ProcessOwnershipGuard {
       this.released = true
       return
     }
-    if (!(await this.matchesOwnedDirectory())) {
+
+    const releasePath = `${this.path}.release.${this.record.nonce}`
+    try {
+      await lstat(releasePath)
+      throw new OwnershipUnavailable('owner-io')
+    } catch (error) {
+      if (
+        error instanceof OwnershipUnavailable ||
+        !isErrno(error, 'ENOENT')
+      ) {
+        throw error instanceof OwnershipUnavailable
+          ? error
+          : new OwnershipUnavailable('owner-io')
+      }
+    }
+
+    try {
+      await rename(this.path, releasePath)
+    } catch (error) {
+      if (isErrno(error, 'ENOENT')) {
+        this.released = true
+        return
+      }
+      throw new OwnershipUnavailable('owner-io')
+    }
+
+    if (!(await this.matchesOwnedDirectory(releasePath))) {
       this.released = true
       return
     }
+
+    const movedOwner = await this.readPinnedOwner(releasePath)
+    if (movedOwner.kind === 'io') {
+      throw new OwnershipUnavailable('owner-io')
+    }
+    if (
+      movedOwner.kind !== 'ok' ||
+      movedOwner.record.nonce !== this.record.nonce
+    ) {
+      this.released = true
+      return
+    }
+
+    const ownerPath = join(releasePath, OWNER_FILE)
+    const tombstonePath = join(
+      releasePath,
+      `.released.${this.record.nonce}.json`,
+    )
     try {
-      await unlink(join(this.path, OWNER_FILE))
+      await lstat(tombstonePath)
+      throw new OwnershipUnavailable('owner-io')
     } catch (error) {
-      if (!isErrno(error, 'ENOENT')) {
-        throw new OwnershipUnavailable('owner-io')
+      if (
+        error instanceof OwnershipUnavailable ||
+        !isErrno(error, 'ENOENT')
+      ) {
+        throw error instanceof OwnershipUnavailable
+          ? error
+          : new OwnershipUnavailable('owner-io')
       }
     }
+
     try {
-      await rmdir(this.path)
+      await rename(ownerPath, tombstonePath)
+    } catch (error) {
+      if (isErrno(error, 'ENOENT')) {
+        this.released = true
+        return
+      }
+      throw new OwnershipUnavailable('owner-io')
+    }
+
+    if (!(await this.matchesOwnedFile(tombstonePath))) {
+      this.released = true
+      return
+    }
+
+    try {
+      await unlink(tombstonePath)
+    } catch (error) {
+      if (isErrno(error, 'ENOENT')) {
+        this.released = true
+        return
+      }
+      throw new OwnershipUnavailable('owner-io')
+    }
+
+    try {
+      await rmdir(releasePath)
     } catch (error) {
       if (!isErrno(error, 'ENOENT')) {
         throw new OwnershipUnavailable('owner-io')
@@ -327,15 +414,130 @@ export class ProcessOwnershipGuard {
     this.released = true
   }
 
-  private async matchesOwnedDirectory(): Promise<boolean> {
+  private async readPinnedOwner(
+    basePath: string,
+  ): Promise<PinnedOwnerReadResult> {
+    const ownerPath = join(basePath, OWNER_FILE)
     try {
-      const stats = await lstat(this.path)
-      if (!stats.isDirectory() || stats.isSymbolicLink()) {
+      const directoryBefore = await lstat(basePath)
+      if (
+        !directoryBefore.isDirectory() ||
+        directoryBefore.isSymbolicLink() ||
+        !matchesIdentity(directoryBefore, this.directoryIdentity)
+      ) {
+        return { kind: 'lost' }
+      }
+
+      const ownerBefore = await lstat(ownerPath)
+      if (
+        !ownerBefore.isFile() ||
+        ownerBefore.isSymbolicLink() ||
+        !matchesIdentity(ownerBefore, this.ownerIdentity)
+      ) {
+        return { kind: 'lost' }
+      }
+
+      const handle = await open(ownerPath, 'r')
+      let text: string
+      try {
+        const openedOwner = await handle.stat()
+        if (
+          !openedOwner.isFile() ||
+          !matchesIdentity(openedOwner, this.ownerIdentity)
+        ) {
+          return { kind: 'lost' }
+        }
+        text = await handle.readFile({ encoding: 'utf8' })
+      } finally {
+        await handle.close().catch(() => undefined)
+      }
+
+      const ownerAfter = await lstat(ownerPath)
+      if (
+        !ownerAfter.isFile() ||
+        ownerAfter.isSymbolicLink() ||
+        !matchesIdentity(ownerAfter, this.ownerIdentity)
+      ) {
+        return { kind: 'lost' }
+      }
+
+      const directoryAfter = await lstat(basePath)
+      if (
+        !directoryAfter.isDirectory() ||
+        directoryAfter.isSymbolicLink() ||
+        !matchesIdentity(directoryAfter, this.directoryIdentity)
+      ) {
+        return { kind: 'lost' }
+      }
+
+      const record = parseOwner(text)
+      return record === undefined
+        ? { kind: 'lost' }
+        : { kind: 'ok', record }
+    } catch (error) {
+      if (
+        isErrno(error, 'ENOENT') ||
+        isErrno(error, 'ENOTDIR') ||
+        isErrno(error, 'ELOOP')
+      ) {
+        return { kind: 'lost' }
+      }
+      return { kind: 'io' }
+    }
+  }
+
+  private async matchesOwnedDirectory(path: string): Promise<boolean> {
+    try {
+      const stats = await lstat(path)
+      return (
+        stats.isDirectory() &&
+        !stats.isSymbolicLink() &&
+        matchesIdentity(stats, this.directoryIdentity)
+      )
+    } catch (error) {
+      if (isErrno(error, 'ENOENT') || isErrno(error, 'ENOTDIR')) {
         return false
       }
-      return stats.dev === this.identity.dev && stats.ino === this.identity.ino
+      throw new OwnershipUnavailable('owner-io')
+    }
+  }
+
+  private async matchesOwnedFile(path: string): Promise<boolean> {
+    try {
+      const before = await lstat(path)
+      if (
+        !before.isFile() ||
+        before.isSymbolicLink() ||
+        !matchesIdentity(before, this.ownerIdentity)
+      ) {
+        return false
+      }
+
+      const handle = await open(path, 'r')
+      try {
+        const opened = await handle.stat()
+        if (
+          !opened.isFile() ||
+          !matchesIdentity(opened, this.ownerIdentity)
+        ) {
+          return false
+        }
+      } finally {
+        await handle.close().catch(() => undefined)
+      }
+
+      const after = await lstat(path)
+      return (
+        after.isFile() &&
+        !after.isSymbolicLink() &&
+        matchesIdentity(after, this.ownerIdentity)
+      )
     } catch (error) {
-      if (isErrno(error, 'ENOENT')) {
+      if (
+        isErrno(error, 'ENOENT') ||
+        isErrno(error, 'ENOTDIR') ||
+        isErrno(error, 'ELOOP')
+      ) {
         return false
       }
       throw new OwnershipUnavailable('owner-io')

@@ -63,6 +63,39 @@ function isPermissionError(error: unknown): boolean {
   return code === 'EPERM' || code === 'EACCES'
 }
 
+const CHILD_TIMEOUT_MS = 3_000
+
+function terminateChild(child: ReturnType<typeof spawn>): void {
+  if (child.exitCode === null && child.signalCode === null) {
+    child.kill('SIGKILL')
+  }
+  child.stdin?.destroy()
+  child.stdout?.destroy()
+  child.stderr?.destroy()
+  child.unref()
+}
+
+async function withChildTimeout<T>(
+  operation: Promise<T>,
+  child: ReturnType<typeof spawn>,
+  message: () => string,
+): Promise<T> {
+  let timer: NodeJS.Timeout | undefined
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      terminateChild(child)
+      reject(new Error(message()))
+    }, CHILD_TIMEOUT_MS)
+  })
+  try {
+    return await Promise.race([operation, timeout])
+  } finally {
+    if (timer !== undefined) {
+      clearTimeout(timer)
+    }
+  }
+}
+
 async function writeOwner(lockPath: string, pid: number): Promise<string> {
   await mkdir(lockPath)
   const owner = {
@@ -82,15 +115,16 @@ async function deadPid(): Promise<number> {
   if (pid === undefined) {
     throw new Error('failed to start dead owner child process')
   }
-  await Promise.race([
-    once(child, 'exit'),
-    new Promise<never>((_, reject) => {
-      setTimeout(
-        () => reject(new Error('dead owner child did not exit within 3s')),
-        3_000,
-      )
-    }),
-  ])
+  try {
+    await withChildTimeout(
+      once(child, 'exit'),
+      child,
+      () => 'dead owner child did not exit within 3s',
+    )
+  } catch (error) {
+    terminateChild(child)
+    throw error
+  }
   return pid
 }
 
@@ -103,15 +137,16 @@ async function liveChild(): Promise<ReturnType<typeof spawn>> {
     child.kill('SIGKILL')
     throw new Error('failed to start live owner child process')
   }
-  await Promise.race([
-    once(child.stdout, 'data'),
-    new Promise<never>((_, reject) => {
-      setTimeout(
-        () => reject(new Error('live owner child did not become ready within 3s')),
-        3_000,
-      )
-    }),
-  ])
+  try {
+    await withChildTimeout(
+      once(child.stdout, 'data'),
+      child,
+      () => 'live owner child did not become ready within 3s',
+    )
+  } catch (error) {
+    terminateChild(child)
+    throw error
+  }
   return child
 }
 
@@ -132,12 +167,13 @@ async function waitForChildReady(
     }
     const timer = setTimeout(() => {
       cleanup()
+      terminateChild(child)
       rejectReady(
         new Error(
           `cross-process owner child did not print ready within 3s; child stderr:\n${childStderr()}`,
         ),
       )
-    }, 3_000)
+    }, CHILD_TIMEOUT_MS)
     const onData = (chunk: Buffer | string): void => {
       output += chunk.toString()
       if (output.includes('ready\n')) {
@@ -192,6 +228,38 @@ describe('ProcessOwnershipGuard', () => {
       await expect(guard.assertHeld()).resolves.toBeUndefined()
       await Promise.all([guard.release(), guard.release(), guard.release()])
       await expect(guard.release()).resolves.toBeUndefined()
+      reacquired = await ProcessOwnershipGuard.acquire(lockPath)
+      await expect(reacquired.assertHeld()).resolves.toBeUndefined()
+    } finally {
+      await guard?.release()
+      await reacquired?.release()
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('keeps ownership when the isolated release path collides, then retries release after the collision is removed', async () => {
+    const root = await makeLockRoot()
+    const lockPath = join(root, 'ownership')
+    let guard: Guard | undefined
+    let reacquired: Guard | undefined
+    try {
+      guard = await ProcessOwnershipGuard.acquire(lockPath)
+      const owner = JSON.parse(
+        await readFile(join(lockPath, OWNER_FILE), 'utf8'),
+      ) as { nonce: string }
+      const releasePath = `${lockPath}.release.${owner.nonce}`
+      const collisionMarker = join(releasePath, 'marker.txt')
+      await mkdir(releasePath)
+      await writeFile(collisionMarker, 'collision', 'utf8')
+
+      await expectOwnershipUnavailable(guard.release(), 'owner-io')
+      await expect(guard.assertHeld()).resolves.toBeUndefined()
+      expect(await readFile(collisionMarker, 'utf8')).toBe('collision')
+
+      await rm(releasePath, { recursive: true })
+      await expect(guard.release()).resolves.toBeUndefined()
+      await expect(lstat(lockPath)).rejects.toMatchObject({ code: 'ENOENT' })
+
       reacquired = await ProcessOwnershipGuard.acquire(lockPath)
       await expect(reacquired.assertHeld()).resolves.toBeUndefined()
     } finally {
@@ -377,7 +445,7 @@ describe('ProcessOwnershipGuard', () => {
     }
   })
 
-  it('rejects file and symlink collisions as owner-io without touching the colliding paths', async () => {
+  it('rejects a file collision as owner-io without touching the colliding path', async () => {
     const fileRoot = await makeLockRoot()
     const filePath = join(fileRoot, 'ownership')
     const fileContent = `collision-${randomUUID()}`
@@ -391,7 +459,9 @@ describe('ProcessOwnershipGuard', () => {
     } finally {
       await rm(fileRoot, { recursive: true, force: true })
     }
+  })
 
+  it('rejects a symlink collision as owner-io without touching the target', async (ctx) => {
     const linkRoot = await makeLockRoot()
     const linkPath = join(linkRoot, 'ownership')
     const targetPath = join(linkRoot, 'target')
@@ -404,6 +474,9 @@ describe('ProcessOwnershipGuard', () => {
         await symlink(targetPath, linkPath)
       } catch (error) {
         if (isPermissionError(error)) {
+          ctx.skip(
+            'directory symlink unavailable on Windows without elevated permissions',
+          )
           return
         }
         throw error
@@ -451,20 +524,12 @@ describe('ProcessOwnershipGuard', () => {
       )
       const exited = once(child, 'exit')
       child.kill('SIGKILL')
-      await Promise.race([
+      await withChildTimeout(
         exited,
-        new Promise<never>((_, reject) => {
-          setTimeout(
-            () =>
-              reject(
-                new Error(
-                  'cross-process owner child did not exit within 3s after SIGKILL',
-                ),
-              ),
-            3_000,
-          )
-        }),
-      ])
+        child,
+        () =>
+          'cross-process owner child did not exit within 3s after SIGKILL',
+      )
       guard = await ProcessOwnershipGuard.acquire(lockPath)
       await expect(guard.assertHeld()).resolves.toBeUndefined()
       const entries = await readdir(root)
@@ -481,14 +546,19 @@ describe('ProcessOwnershipGuard', () => {
       ) {
         const exited = once(child, 'exit')
         child.kill('SIGKILL')
-        await exited
+        await withChildTimeout(
+          exited,
+          child,
+          () =>
+            'cross-process owner child did not exit within 3s during cleanup',
+        )
       }
       await guard?.release()
       await rm(root, { recursive: true, force: true })
     }
   })
 
-  it('loses ownership when the lock dir is replaced by a symlinked lookalike, and release leaves the real paths intact', async () => {
+  it('loses ownership when the lock dir is replaced by a symlinked lookalike, and release leaves the real paths intact', async (ctx) => {
     const root = await makeLockRoot()
     const lockPath = join(root, 'ownership')
     const heldSibling = join(root, 'held-ownership')
@@ -508,6 +578,9 @@ describe('ProcessOwnershipGuard', () => {
         await symlink(targetPath, lockPath)
       } catch (error) {
         if (isPermissionError(error)) {
+          ctx.skip(
+            'directory symlink unavailable on Windows without elevated permissions',
+          )
           return
         }
         throw error
@@ -531,6 +604,38 @@ describe('ProcessOwnershipGuard', () => {
       expect(await readFile(markerPath, 'utf8')).toBe(marker)
       expect((await lstat(lockPath)).isSymbolicLink()).toBe(true)
       expect(await readFile(join(heldSibling, OWNER_FILE), 'utf8')).toBe(raw)
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('rejects assertion as owner-lost when owner.json is replaced by a file symlink, and release leaves the held, target, and lock paths intact', async (ctx) => {
+    const root = await makeLockRoot()
+    const lockPath = join(root, 'ownership')
+    const heldOwnerPath = join(root, 'held-owner.json')
+    const targetOwnerPath = join(root, 'target-owner.json')
+    let guard: Guard | undefined
+    try {
+      guard = await ProcessOwnershipGuard.acquire(lockPath)
+      const raw = await readFile(join(lockPath, OWNER_FILE), 'utf8')
+      await rename(join(lockPath, OWNER_FILE), heldOwnerPath)
+      await writeFile(targetOwnerPath, raw, 'utf8')
+      try {
+        await symlink(targetOwnerPath, join(lockPath, OWNER_FILE))
+      } catch (error) {
+        if (isPermissionError(error)) {
+          ctx.skip(
+            'file symlink unavailable on Windows without elevated permissions',
+          )
+          return
+        }
+        throw error
+      }
+      await expectOwnershipUnavailable(guard.assertHeld(), 'owner-lost')
+      await expect(guard.release()).resolves.toBeUndefined()
+      expect(await readFile(targetOwnerPath, 'utf8')).toBe(raw)
+      expect(await readFile(heldOwnerPath, 'utf8')).toBe(raw)
+      expect((await stat(lockPath)).isDirectory()).toBe(true)
     } finally {
       await rm(root, { recursive: true, force: true })
     }
