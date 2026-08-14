@@ -17,8 +17,10 @@
     "pretest": "pnpm build",
     "test": "vitest run",
     "test:e2e": "vitest run --config vitest.e2e.config.ts",
+    "benchmark": "tsx scripts/benchmark.mts",
     "packed:install": "tsx scripts/packed-install.mts",
-    "pack:plugin": "pnpm build && pnpm --dir packages/dsh-subagent-admission pack --pack-destination ../../dist"
+    "pack:plugin": "pnpm build && pnpm --dir packages/dsh-subagent-admission pack --pack-destination ../../dist",
+    "reproduce:131": "tsx scripts/reproduce-131.mts"
   },
   "devDependencies": {
     "@deepseek-ai/dsh": "0.1.0-rc.6",

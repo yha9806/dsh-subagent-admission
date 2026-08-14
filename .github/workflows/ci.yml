@@ -70,6 +70,20 @@ jobs:
       - name: Verify SQLite crash recovery
         run: pnpm exec tsx scripts/crash-fixture.mts --backend sqlite
 
+      - name: Measure a reduced deterministic benchmark
+        run: >-
+          pnpm benchmark --
+          --iterations 20
+          --warmup 5
+          --output evidence/benchmark-reduced.json
+
+      - name: Reproduce a reduced Strict-only Discussion 131 shape
+        run: >-
+          pnpm reproduce:131 --
+          --strict-only
+          --children 12
+          --output evidence/reproduction-strict-reduced.json
+
       - name: Verify packed Audit and Strict installation
         run: pnpm test:e2e -- tests/packed-install.e2e.ts
         env:
