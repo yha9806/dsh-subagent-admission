@@ -17,7 +17,11 @@ candidates do not imply npm availability or upstream adoption.
 - Defined `perRootAdmittedTotal` as a non-refundable, non-resetting v0.1
   lifetime fuse and documented zero-patch Strict as the productization gate.
 - Fixed packed-install pnpm command resolution on Windows by selecting
-  `pnpm.cmd`, while preserving an explicit `DSH_PNPM_BIN` override.
+  `pnpm.cmd`, routing command shims through `cmd.exe`, and preserving an
+  explicit `DSH_PNPM_BIN` override.
+- Enabled the reviewed, exact-lock `node-pty` Linux native build and
+  `dsh-subprocess-local` helper-permission scripts required by the packed stock
+  Web acceptance gate.
 
 ## 0.1.0-rc.1 — 2026-08-14
 

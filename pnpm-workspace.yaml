@@ -3,16 +3,19 @@ packages:
 
 # pnpm 11 blocks any dependency shipping an install/build script until it is
 # explicitly reviewed (an unlisted script is a hard install error). The pinned
-# `@deepseek-ai/dsh` rc.6 meta-dependency pulls these packages in; Task 1 uses
-# none of their native backends, so their scripts are denied, matching the
-# official repository's allowBuilds review.
+# `@deepseek-ai/dsh` rc.6 meta-dependency pulls these packages in. The packed
+# stock-Web acceptance gate loads dsh-subprocess-local: node-pty ships Darwin
+# and Windows prebuilds but must compile pty.node on Linux. The exact locked
+# node-pty 1.1.0 build/cleanup scripts and dsh-subprocess-local rc.6 helper-chmod
+# script were reviewed before enabling them; unrelated install scripts stay
+# denied, matching the official repository's allowBuilds review.
 allowBuilds:
   esbuild: true
   '@google/genai': false
   protobufjs: false
   koffi: false
-  node-pty: false
-  '@deepseek-ai/dsh-subprocess-local': false
+  node-pty: true
+  '@deepseek-ai/dsh-subprocess-local': true
 
 # pnpm 11.7's minimum-release-age supply-chain gate is disabled for this
 # workspace: the entire official rc.6 release wave mandated by the pinned

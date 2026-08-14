@@ -126,8 +126,14 @@ interface CommandResult {
   readonly exitCode: number
 }
 
+export interface CommandInvocation {
+  readonly executable: string
+  readonly args: readonly string[]
+}
+
 interface WebProcess {
   readonly child: ChildProcess
+  readonly invocation: CommandInvocation
   readonly serverUrl: string
   readonly stdout: () => string
   readonly stderr: () => string
@@ -163,6 +169,23 @@ export function resolvePnpmExecutable(
   return platform === 'win32' ? 'pnpm.cmd' : 'pnpm'
 }
 
+/** Route Windows command shims through cmd.exe; native executables stay direct. */
+export function resolveCommandInvocation(
+  executable: string,
+  args: readonly string[],
+  environment: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform,
+): CommandInvocation {
+  if (platform !== 'win32' || !/\.(?:cmd|bat)$/i.test(executable)) {
+    return Object.freeze({ executable, args: Object.freeze([...args]) })
+  }
+  const commandShell = environment.ComSpec || environment.COMSPEC || 'cmd.exe'
+  return Object.freeze({
+    executable: commandShell,
+    args: Object.freeze(['/d', '/s', '/c', executable, ...args]),
+  })
+}
+
 function recordCommand(
   commands: PackedCommandReport[],
   name: string,
@@ -190,7 +213,8 @@ function command(
   cwd: string,
   env: NodeJS.ProcessEnv = {},
 ): CommandResult {
-  const result = spawnSync(executable, [...args], {
+  const invocation = resolveCommandInvocation(executable, args)
+  const result = spawnSync(invocation.executable, [...invocation.args], {
     cwd,
     encoding: 'utf8',
     env: { ...process.env, ...env, CI: '1' },
@@ -204,7 +228,14 @@ function command(
     stderr: result.stderr ?? '',
     exitCode: result.status ?? 1,
   }
-  recordCommand(commands, name, executable, args, cwd, normalized)
+  recordCommand(
+    commands,
+    name,
+    invocation.executable,
+    invocation.args,
+    cwd,
+    normalized,
+  )
   return normalized
 }
 
@@ -224,7 +255,8 @@ function checked(
 }
 
 function quiet(executable: string, args: readonly string[], cwd: string): string {
-  const result = spawnSync(executable, [...args], {
+  const invocation = resolveCommandInvocation(executable, args)
+  const result = spawnSync(invocation.executable, [...invocation.args], {
     cwd,
     encoding: 'utf8',
     env: { ...process.env, CI: '1' },
@@ -503,7 +535,8 @@ async function startWeb(
     '--port',
     '0',
   ]
-  const child = spawn(pnpm, args, {
+  const invocation = resolveCommandInvocation(pnpm, args)
+  const child = spawn(invocation.executable, [...invocation.args], {
     cwd: workspaceRoot,
     env: {
       ...process.env,
@@ -519,7 +552,13 @@ async function startWeb(
   child.stdout?.on('data', (chunk: Buffer | string) => { stdout += chunk.toString() })
   child.stderr?.on('data', (chunk: Buffer | string) => { stderr += chunk.toString() })
   const serverUrl = await waitForWeb(child, () => `${stdout}\n${stderr}`)
-  return { child, serverUrl, stdout: () => stdout, stderr: () => stderr }
+  return {
+    child,
+    invocation,
+    serverUrl,
+    stdout: () => stdout,
+    stderr: () => stderr,
+  }
 }
 
 async function stopChild(child: ChildProcess): Promise<void> {
@@ -939,11 +978,8 @@ export async function runPackedInstall(
     recordCommand(
       commands,
       'web-boot',
-      pnpm,
-      [
-        'exec', 'dsh', '--profile', 'web', '--patch', seed.overlayPath,
-        '--host', '127.0.0.1', '--port', '0',
-      ],
+      web.invocation.executable,
+      web.invocation.args,
       workspaceRoot,
       { stdout: web.stdout(), stderr: web.stderr(), exitCode: 0 },
     )
