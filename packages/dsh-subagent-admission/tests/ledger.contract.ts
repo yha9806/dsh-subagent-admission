@@ -360,5 +360,107 @@ export function ledgerContract(open: () => Promise<LedgerFixture>): void {
         await fx.dispose()
       }
     })
+
+    it('keeps prototype-named roots and parents as plain own keys', async () => {
+      const fx = await open()
+      try {
+        for (const parentSessionId of ['__proto__', 'constructor', 'prototype']) {
+          await reserve(fx.ledger, { rootSessionId: '__proto__', parentSessionId })
+        }
+        await fx.closeMedium()
+        await fx.reopen()
+
+        const row = (await fx.ledger.read('__proto__')) as RootLedgerRow
+        expect(row).toBeDefined()
+        expect(row.admittedTotal).toBe(3)
+
+        const map = row.admittedChildrenByParent as Record<string, number>
+        for (const key of ['__proto__', 'constructor', 'prototype']) {
+          expect(Object.hasOwn(map, key)).toBe(true)
+          expect(map[key]).toBe(1)
+        }
+        expect(({} as any).polluted).toBeUndefined()
+      } finally {
+        await fx.dispose()
+      }
+    })
+
+    it('sanitizes a synchronous roots.get failure and keeps the tail usable', async () => {
+      const fx = await open()
+      try {
+        const internals = fx.ledger as unknown as {
+          roots: { get: (key: string) => RootLedgerRow | undefined }
+        }
+        const originalGet = internals.roots.get
+        try {
+          internals.roots.get = () => {
+            throw new Error('/secret/backend')
+          }
+
+          let callbackCalls = 0
+          const spy = (): void => {
+            callbackCalls += 1
+          }
+
+          const failure = await reserve(fx.ledger, { now: 1 }, spy).then(
+            () => undefined,
+            (error: unknown) => error,
+          )
+          expect(failure).toBeInstanceOf(Error)
+          expect(failure).toMatchObject({ code: 'ADMISSION_STATE_IO' })
+          expect((failure as Error).message).toBe(
+            'Ledger operational error: ADMISSION_STATE_IO',
+          )
+          expect(callbackCalls).toBe(0)
+          expect(fx.probe.writes).toBe(0)
+        } finally {
+          internals.roots.get = originalGet
+        }
+
+        await expect(reserve(fx.ledger, { now: 1 })).resolves.toBeDefined()
+      } finally {
+        await fx.dispose()
+      }
+    })
+
+    it('fails closed on a rejecting thenable callback', async () => {
+      const fx = await open()
+      try {
+        const rejecting = (() =>
+          Promise.reject(new Error('async capacity'))) as unknown as () => void
+
+        await expect(reserve(fx.ledger, { now: 1 }, rejecting)).rejects.toMatchObject({
+          code: 'ADMISSION_STATE_IO',
+        })
+        expect(fx.probe.writes).toBe(0)
+        await expect(fx.ledger.read('root')).resolves.toBeUndefined()
+      } finally {
+        await fx.dispose()
+      }
+    })
+
+    it('resolves when the post-commit probe throws', async () => {
+      const fx = await open()
+      try {
+        const probe = fx.probe as { writes: number; didWrite: () => void }
+        const originalDidWrite = probe.didWrite
+        try {
+          probe.didWrite = () => {
+            throw new Error('probe')
+          }
+
+          await expect(reserve(fx.ledger, { now: 1 })).resolves.toBeDefined()
+
+          const row = (await fx.ledger.read('root')) as RootLedgerRow
+          expect(row).toBeDefined()
+          expect(row.admittedTotal).toBe(1)
+          expect(row.revision).toBe(1)
+        } finally {
+          probe.didWrite = originalDidWrite
+        }
+      } finally {
+        await fx.dispose()
+      }
+    })
   })
 }

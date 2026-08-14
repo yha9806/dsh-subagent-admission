@@ -49,11 +49,6 @@ function isPositiveSafeInteger(value: number): boolean {
   return Number.isSafeInteger(value) && value > 0
 }
 
-function isThenable(value: unknown): boolean {
-  const candidate = value as { then?: unknown } | null | undefined
-  return candidate !== null && candidate !== undefined && typeof candidate.then === 'function'
-}
-
 /**
  * Root admission ledger over one storage domain. `reserveNew` runs in a
  * private promise-tail critical section spanning the synchronous read,
@@ -131,7 +126,7 @@ export class RootLedgerStore {
     input: ReserveNewInput,
     assertActiveCapacity: () => void,
   ): Promise<RootLedgerRow> {
-    const current = this.roots.get(input.rootSessionId)
+    const current = this.readCurrentRow(input)
     const admittedTotal = current?.admittedTotal ?? 0
     const childCounts = current?.admittedChildrenByParent
     const rawCount = childCounts?.[input.parentSessionId]
@@ -145,7 +140,14 @@ export class RootLedgerStore {
     }
 
     const callbackResult = assertActiveCapacity()
-    if (isThenable(callbackResult)) {
+    let then: unknown
+    try {
+      then = (callbackResult as { then?: unknown } | null | undefined)?.then
+    } catch {
+      throw new LedgerOperationalError('ADMISSION_STATE_IO', input.rootSessionId, input.parentSessionId)
+    }
+    if (typeof then === 'function') {
+      Promise.resolve(callbackResult).catch(() => {})
       throw new LedgerOperationalError('ADMISSION_STATE_IO', input.rootSessionId, input.parentSessionId)
     }
 
@@ -170,8 +172,20 @@ export class RootLedgerStore {
     } catch {
       throw new LedgerOperationalError('ADMISSION_STATE_IO', input.rootSessionId, input.parentSessionId)
     }
-    this.probe.didWrite()
+    try {
+      this.probe.didWrite()
+    } catch {
+      // Probe instrumentation must never turn a durable acceptance into a failure.
+    }
     return next
+  }
+
+  private readCurrentRow(input: ReserveNewInput): RootLedgerRow | undefined {
+    try {
+      return this.roots.get(input.rootSessionId)
+    } catch {
+      throw new LedgerOperationalError('ADMISSION_STATE_IO', input.rootSessionId, input.parentSessionId)
+    }
   }
 }
 
