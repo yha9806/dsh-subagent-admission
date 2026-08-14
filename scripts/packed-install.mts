@@ -26,6 +26,12 @@ import {
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import { chromium } from 'playwright'
+import {
+  DEFAULT_SEAM_PATCH,
+  parseSeamPatchName,
+  seamPatch,
+  type SeamPatchName,
+} from './seam-patch-tooling.js'
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url))
 const DEFAULT_WORKSPACE_ROOT = resolve(SCRIPT_DIR, '..')
@@ -79,6 +85,8 @@ export interface PackedInstallReport {
   readonly strict?: {
     readonly mode: 'strict'
     readonly enforced: true
+    readonly patchName: SeamPatchName
+    readonly patchSha256: string
     readonly acceptedActivations: number
     readonly attemptedActivations: number
     readonly providerStarts: number
@@ -105,6 +113,7 @@ export interface PackedInstallOptions {
   readonly captureGui?: boolean
   readonly cleanup?: boolean
   readonly screenshotPath?: string
+  readonly strictPatch?: SeamPatchName
   readonly workspaceRoot?: string
 }
 
@@ -752,6 +761,8 @@ async function captureGui(
 function validateStrict(
   document: Record<string, unknown>,
   baseline: Baseline,
+  patchName: SeamPatchName,
+  patchSha: string,
 ): NonNullable<PackedInstallReport['strict']> {
   const candidate = document as unknown as NonNullable<PackedInstallReport['strict']>
     & { readonly schemaVersion?: unknown; readonly status?: unknown }
@@ -774,6 +785,8 @@ function validateStrict(
   return {
     mode: candidate.mode,
     enforced: candidate.enforced,
+    patchName,
+    patchSha256: patchSha,
     acceptedActivations: candidate.acceptedActivations,
     attemptedActivations: candidate.attemptedActivations,
     providerStarts: candidate.providerStarts,
@@ -790,10 +803,16 @@ function runStrictProof(
   pnpm: string,
   tarballPath: string,
   evidenceDir: string,
+  strictPatchName: SeamPatchName = DEFAULT_SEAM_PATCH,
 ): NonNullable<PackedInstallReport['strict']> {
   const baseline = parseBaseline(workspaceRoot)
   const checkout = ensureExactCheckout(commands, workspaceRoot, baseline)
-  const patchPath = resolve(workspaceRoot, 'patches/dsh-subagent-admission-seam.patch')
+  const patchDefinition = seamPatch(strictPatchName)
+  const patchPath = resolve(workspaceRoot, patchDefinition.relativePath)
+  if (!existsSync(patchPath)) {
+    fail(`missing seam patch ${patchPath}`)
+  }
+  const patchSha = sha256(readFileSync(patchPath))
   checked(commands, 'strict-patch-preflight', 'git', ['apply', '--check', patchPath], checkout)
 
   let disposable = mkdtempSync(join(tmpdir(), STRICT_TEMP_PREFIX))
@@ -881,11 +900,14 @@ function runStrictProof(
         DSH_ADMISSION_EVIDENCE_DIR: evidenceDir,
         DSH_ADMISSION_PATCHED_CHECKOUT: '1',
         DSH_ADMISSION_SOURCE_COMMIT: baseline.source.commit,
+        DSH_ADMISSION_SEAM_SHAPE: strictPatchName,
       },
     )
     return validateStrict(
       readJson(resolve(evidenceDir, 'packed-strict.json')),
       baseline,
+      strictPatchName,
+      patchSha,
     )
   } finally {
     if (disposable.length > 0) {
@@ -911,6 +933,7 @@ export async function runPackedInstall(
   const cleanup = options.cleanup ?? true
   const auditOnly = options.auditOnly ?? false
   const capture = options.captureGui ?? false
+  const strictPatch = options.strictPatch ?? DEFAULT_SEAM_PATCH
   const pnpm = resolvePnpmExecutable()
   const commands: PackedCommandReport[] = []
   const temporaryRoot = mkdtempSync(join(tmpdir(), TEMP_PREFIX))
@@ -984,6 +1007,7 @@ export async function runPackedInstall(
           pnpm,
           tarballPath,
           evidenceDir,
+          strictPatch,
         )
 
     await stopChild(web.child)
@@ -1033,23 +1057,28 @@ export async function runPackedInstall(
   }
 }
 
-interface CliOptions {
+export interface PackedInstallCliResult {
   readonly run: PackedInstallOptions
   readonly outputPath?: string
 }
 
-function parseCli(argv: readonly string[]): CliOptions {
+export function parsePackedInstallCli(argv: readonly string[]): PackedInstallCliResult {
   let auditOnly = false
   let capture = false
   let cleanup = true
   let screenshotPath: string | undefined
   let outputPath: string | undefined
+  let strictPatch: SeamPatchName | undefined
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index]
     if (arg === '--audit-only') auditOnly = true
     else if (arg === '--capture-gui') capture = true
     else if (arg === '--keep-temp') cleanup = false
-    else if (arg === '--screenshot') {
+    else if (arg === '--strict-patch') {
+      index += 1
+      if (index >= argv.length) fail('--strict-patch needs a value')
+      strictPatch = parseSeamPatchName(argv[index])
+    } else if (arg === '--screenshot') {
       screenshotPath = argv[++index]
       if (screenshotPath === undefined) fail('--screenshot needs a path')
     } else if (arg === '--output') {
@@ -1064,6 +1093,7 @@ function parseCli(argv: readonly string[]): CliOptions {
       auditOnly,
       captureGui: capture,
       cleanup,
+      ...(strictPatch === undefined ? {} : { strictPatch }),
       ...(screenshotPath === undefined ? {} : { screenshotPath }),
     },
     ...(outputPath === undefined ? {} : { outputPath }),
@@ -1073,7 +1103,7 @@ function parseCli(argv: readonly string[]): CliOptions {
 const invokedPath = process.argv[1] === undefined ? '' : resolve(process.argv[1])
 if (invokedPath === fileURLToPath(import.meta.url)) {
   try {
-    const options = parseCli(process.argv.slice(2))
+    const options = parsePackedInstallCli(process.argv.slice(2))
     const report = await runPackedInstall(options.run)
     const rendered = `${JSON.stringify(report, null, 2)}\n`
     if (options.outputPath !== undefined) {
