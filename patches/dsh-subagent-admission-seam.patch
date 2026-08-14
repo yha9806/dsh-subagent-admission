@@ -294,7 +294,7 @@ index d826efb..c0e3e49 100644
      // therefore cannot be judged settled. Delivering after the release would
      // race a parent watcher that resumes one microtask later, finds itself
 diff --git a/packages/subagent/subagent/src/index.ts b/packages/subagent/subagent/src/index.ts
-index fe270f1..d745aff 100644
+index fe270f1..c248efb 100644
 --- a/packages/subagent/subagent/src/index.ts
 +++ b/packages/subagent/subagent/src/index.ts
 @@ -31,6 +31,7 @@
@@ -328,7 +328,7 @@ index fe270f1..d745aff 100644
    SubagentCapabilities,
    SubagentProvider,
    SubagentResult,
-@@ -167,9 +177,76 @@ declare module '@deepseek-ai/cordis' {
+@@ -167,9 +177,91 @@ declare module '@deepseek-ai/cordis' {
    }
  }
  
@@ -395,6 +395,21 @@ index fe270f1..d745aff 100644
 +  }
 +}
 +
++/**
++ * A process-lifetime fail-closed marker installed after policy unload. Once a
++ * runtime has enforced admission it must never silently return to stock bypass;
++ * a fresh runtime process is the explicit recovery boundary.
++ */
++const TOMBSTONED_ADMISSION_POLICY = Object.freeze({
++  protocolVersion: 1 as const,
++  prepare: async (): Promise<never> => {
++    throw new SubagentError(
++      'subagent admission policy is closed; restart the runtime to admit new children',
++      'ADMISSION_CLOSED',
++    )
++  },
++}) satisfies SubagentAdmissionPolicyV1
++
  /** Named provider registry with one-shot runs, durable discovery, and continuable-child operations. */
  export class SubagentRuntime extends Service {
 +  /** Explicit admission protocol identity; method presence never selects it. */
@@ -405,7 +420,7 @@ index fe270f1..d745aff 100644
    private continuations: SubagentContinuationManager | undefined
    /** Deployment contributions composed into unpublished continuable children. */
    private readonly setupRegistry = new SubagentActivationSetupRegistry()
-@@ -185,6 +262,10 @@ export class SubagentRuntime extends Service {
+@@ -185,6 +277,10 @@ export class SubagentRuntime extends Service {
      this.emitLifecycle = createLifecycleEmitter(this.ctx, parent => scopeTarget(this, parent))
      ctx.inject(['agents'], (childCtx: Context) => {
        const manager = new SubagentContinuationManager(childCtx, {
@@ -416,7 +431,7 @@ index fe270f1..d745aff 100644
          prepareContinuable: (name, request) => this.prepareContinuable(name, request),
          observeActivation: (provider, childId, parent) => this.observeActivation(provider, childId, parent),
        }, this.setupRegistry)
-@@ -384,6 +465,37 @@ export class SubagentRuntime extends Service {
+@@ -384,6 +480,39 @@ export class SubagentRuntime extends Service {
      }.bind(this), 'subagents.registerProvider()')
    }
  
@@ -446,7 +461,9 @@ index fe270f1..d745aff 100644
 +      }
 +      this.admissionPolicy = policy
 +      yield () => {
-+        if (this.admissionPolicy === policy) this.admissionPolicy = undefined
++        if (this.admissionPolicy === policy) {
++          this.admissionPolicy = TOMBSTONED_ADMISSION_POLICY
++        }
 +      }
 +    }.bind(this), 'subagents.registerAdmissionPolicy()')
 +  }
@@ -454,7 +471,7 @@ index fe270f1..d745aff 100644
    /**
     * Look up a provider by name.
     * @param name - the provider name.
-@@ -422,7 +534,48 @@ export class SubagentRuntime extends Service {
+@@ -422,7 +551,48 @@ export class SubagentRuntime extends Service {
        ...request.label !== undefined ? { label: request.label } : {},
      })
      const resolved: ResolvedSubagentStartRequest = { ...request, descriptor }
@@ -504,7 +521,7 @@ index fe270f1..d745aff 100644
    }
  
    /**
-@@ -434,6 +587,14 @@ export class SubagentRuntime extends Service {
+@@ -434,6 +604,14 @@ export class SubagentRuntime extends Service {
      name: string,
      request: ContinuableCreateRequest,
    ): Promise<ContinuableCreateSpec> {
@@ -519,7 +536,7 @@ index fe270f1..d745aff 100644
      const provider = this.expectProvider(name)
      if (provider.prepareContinuable === undefined) {
        throw new SubagentError(
-@@ -442,7 +603,8 @@ export class SubagentRuntime extends Service {
+@@ -442,7 +620,8 @@ export class SubagentRuntime extends Service {
          'UNSUPPORTED_CAPABILITY',
        )
      }

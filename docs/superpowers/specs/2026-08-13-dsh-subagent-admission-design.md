@@ -366,7 +366,9 @@ contract is fixed:
 - binding is at most once, release is idempotent, and conflicting repeats fail
   loudly;
 - unregistering first tombstones the authority, synchronously rejecting new
-  admission, then allows outstanding permits to drain and release.
+  admission with `ADMISSION_CLOSED`, then allows outstanding permits to drain
+  and release; that tombstone is process-lifetime, and a fresh runtime is the
+  only route back to stock behavior.
 
 The seam is an ownership boundary, not a configuration API. The external plugin
 owns limits, durable accounting, telemetry, and GUI state.

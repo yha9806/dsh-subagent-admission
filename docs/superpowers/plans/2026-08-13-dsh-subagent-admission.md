@@ -1125,7 +1125,7 @@ git commit -m "feat: propose dsh subagent admission seam"
 - Consumes: complete Host authority, official patch verifier, JSON/SQLite adapters.
 - Produces: machine-readable conformance matrix and restart evidence; no production API.
 
-- [ ] **Step 1: Encode the complete matrix as data**
+- [x] **Step 1: Encode the complete matrix as data**
 
 ```ts
 export const CONFORMANCE_CASES = [
@@ -1140,7 +1140,7 @@ export const CONFORMANCE_CASES = [
 
 Each case runs through direct `ctx.subagents` service calls and the public tool path. Add nested children, ordinary parent fork, cold resume, resident follow-up, cancellations, provider/prepare/materialize failures, cleanup delay, unload, protocol mismatch, duplicate registration, and unsafe bootstrap.
 
-- [ ] **Step 2: Write lifecycle barriers and failing direct-service tests**
+- [x] **Step 2: Write lifecycle barriers and failing direct-service tests**
 
 The fake Provider/Agent/Handle exposes promises at `beforeProvider`, `beforeMaterialize`, `resultSettled`, `beforeDisposeComplete`, `descendantHeld`, and `finishDisposalComplete`. Tests assert lease state at every barrier, including that result settlement alone does not release one-shot capacity.
 
@@ -1148,15 +1148,15 @@ Run: `corepack pnpm test:e2e -- tests/conformance/strict-runtime.e2e.ts`
 
 Expected: FAIL until the patched checkout and plugin are composed by the runner.
 
-- [ ] **Step 3: Implement the patched-checkout conformance runner**
+- [x] **Step 3: Implement the patched-checkout conformance runner**
 
 `run-strict-conformance.mts` reuses the verified exact checkout, packs the plugin, links/installs it into the checkout's test composition, and runs the matrix with `DSH_ADMISSION_EVIDENCE_DIR` pointing to a temporary directory. It records every case as `pass`, `fail`, or `not-applicable` with a reason; it never converts skipped cases into pass.
 
-- [ ] **Step 4: Add stock Audit conformance**
+- [x] **Step 4: Add stock Audit conformance**
 
 Install the packed plugin with unpatched npm rc.6. Assert mode Audit, no policy registration, observed start/end telemetry, and zero enforcement claims. A 7th concurrent child must still be allowed by stock DSH in the scripted fixture; the test records that as expected Audit behavior, not a product failure.
 
-- [ ] **Step 5: Add post-ledger-commit crash fixtures for both backends**
+- [x] **Step 5: Add post-ledger-commit crash fixtures for both backends**
 
 The child process accepts exactly one admission, emits `LEDGER_COMMITTED`, and waits before provider/materialization. The driver kills it only after that marker. On restart:
 
@@ -1168,7 +1168,7 @@ expect(reopened.activeLeases).toEqual([])
 
 Repeat with JSON and SQLite and with the cumulative limit set to 1 so the next new child is denied.
 
-- [ ] **Step 6: Run all conformance/restart gates**
+- [x] **Step 6: Run all conformance/restart gates**
 
 Run:
 
@@ -1180,7 +1180,7 @@ corepack pnpm tsx scripts/crash-fixture.mts --backend sqlite
 
 Expected: all pinned cases PASS; stock Audit is clearly labelled non-enforcing; raw JSON lands only in the temporary evidence directory.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add tests/conformance tests/crash scripts/run-strict-conformance.mts scripts/crash-fixture.mts

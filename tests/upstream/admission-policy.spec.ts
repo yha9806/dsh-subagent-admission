@@ -130,7 +130,7 @@ function registerOneShotProvider(
 }
 
 describe('SubagentRuntime protocol-v1 admission registration', () => {
-  it('exposes an explicit protocol and rejects duplicate registration', async () => {
+  it('exposes an explicit protocol and permanently tombstones after unregister', async () => {
     const { runtime } = await bareRuntime()
     const first = new RecordingPolicy()
 
@@ -141,7 +141,7 @@ describe('SubagentRuntime protocol-v1 admission registration', () => {
 
     unregister()
     expect(() => runtime.registerAdmissionPolicy(new RecordingPolicy()))
-      .not.toThrow()
+      .toThrow(expect.objectContaining({ code: 'DUPLICATE_ADMISSION_POLICY' }))
   })
 
   it('rejects a policy whose explicit protocol is not version 1', async () => {
@@ -340,16 +340,18 @@ describe('one-shot admission ownership', () => {
     const policy = new RecordingPolicy()
     const unregister = runtime.registerAdmissionPolicy(policy)
     const firstRaw = remoteRun('first')
-    const secondRaw = remoteRun('second')
-    let next = firstRaw
-    registerOneShotProvider(runtime, 'spawn', async () => next)
+    let starts = 0
+    registerOneShotProvider(runtime, 'spawn', async () => {
+      starts += 1
+      return firstRaw
+    })
 
     const first = await runtime.start('spawn', oneShotRequest())
     unregister()
-    next = secondRaw
-    const second = await runtime.start('spawn', oneShotRequest())
 
-    expect(second).toBe(secondRaw)
+    await expect(runtime.start('spawn', oneShotRequest()))
+      .rejects.toMatchObject({ code: 'ADMISSION_CLOSED' })
+    expect(starts).toBe(1)
     expect(policy.records).toHaveLength(1)
     await first.dispose()
     expect(policy.records[0]?.releases).toEqual(['disposed'])

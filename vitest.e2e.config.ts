@@ -11,7 +11,7 @@ export default defineConfig({
   }],
   test: {
     environment: 'node',
-    include: ['packages/**/*.e2e.ts'],
+    include: ['packages/**/*.e2e.ts', 'tests/**/*.e2e.ts'],
     passWithNoTests: true,
   },
 })

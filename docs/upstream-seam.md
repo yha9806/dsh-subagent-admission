@@ -51,7 +51,10 @@ official cleanup.
 Only one protocol-v1 policy may be registered. Duplicate registration fails
 with `DUPLICATE_ADMISSION_POLICY`; an unsupported explicit protocol fails with
 `UNSUPPORTED_ADMISSION_PROTOCOL`. Unregistration synchronously tombstones new
-access but does not invalidate permits already owned by runs or Activations.
+access with `ADMISSION_CLOSED` but does not invalidate permits already owned by
+runs or Activations. The tombstone is process-lifetime: restoring admission
+requires a fresh runtime, so unloading enforcement can never degrade silently
+to the stock bypass path.
 
 ## Centralized lifecycle points
 
