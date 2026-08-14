@@ -1201,7 +1201,7 @@ git commit -m "test: verify strict admission lifecycle"
 - Consumes: generated `dsh-subagent-admission/remote`, `ctx.remote.$mount`, `ctx.remote.snapshot.get/watch`, Task 2 snapshot types.
 - Produces: `AdmissionSnapshotController` with `getSnapshot`, `subscribe`, `start(sessionId)`, `inject(sessionId)`, and `stop()`; `inject` starts or switches the one active loop and returns `{ hooks: { admission: controller } }` for the native view. There is no Host mutation method.
 
-- [ ] **Step 1: Write controller epoch/revision/reconnect tests**
+- [x] **Step 1: Write controller epoch/revision/reconnect tests**
 
 ```ts
 it('replaces state with full snapshots and resets on epoch change', async () => {
@@ -1218,13 +1218,13 @@ it('replaces state with full snapshots and resets on epoch change', async () => 
 
 Also test abort on session switch/unload, timeout repoll, transient Remote failure with bounded backoff, and no delta merge.
 
-- [ ] **Step 2: Run and verify failure**
+- [x] **Step 2: Run and verify failure**
 
 Run: `corepack pnpm vitest run packages/dsh-subagent-admission/tests/client-controller.client.spec.ts`
 
 Expected: FAIL because the controller is missing.
 
-- [ ] **Step 3: Mount the package's generated Remote contribution**
+- [x] **Step 3: Mount the package's generated Remote contribution**
 
 ```ts
 import snapshotRemote from 'dsh-subagent-admission/remote'
@@ -1241,11 +1241,11 @@ export async function apply(ctx: ClientContext): Promise<() => Promise<void>> {
 
 Set Client `inject` to `['remote', 'slots', 'locale', 'sessions']`; the package manifest's `dsh.client.inject` remains package-level module ordering.
 
-- [ ] **Step 4: Implement one active long-poll loop**
+- [x] **Step 4: Implement one active long-poll loop**
 
 The controller issues `get` on start, then `watch` with the last full epoch/revision and 25-second timeout. `inject(sessionId)` delegates to idempotent `start(sessionId)` and returns the controller as a `useSyncExternalStore`-compatible hook source. A generation token and AbortController ensure an old session/reconnect response cannot replace current state. Backoff is `250, 500, 1000, 2000, 5000` ms capped, reset by any valid snapshot.
 
-- [ ] **Step 5: Build and test the real closure artifact**
+- [x] **Step 5: Build and test the real closure artifact**
 
 Run:
 
@@ -1256,7 +1256,7 @@ corepack pnpm vitest run packages/dsh-subagent-admission/tests/client-controller
 
 Expected: PASS; the built factory resolves only declared platform modules, inlines its generated Remote/Zod codec, returns `apply`/`inject`, and contains neither the absolute repository path nor the current OS username.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add packages/dsh-subagent-admission/src/client packages/dsh-subagent-admission/tests/client-controller.client.spec.ts packages/dsh-subagent-admission/tests/client-bundle.client.spec.ts

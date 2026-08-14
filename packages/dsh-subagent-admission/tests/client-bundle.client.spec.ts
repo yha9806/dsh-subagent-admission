@@ -1,12 +1,15 @@
 import { readFileSync } from 'node:fs'
-import { dirname, resolve } from 'node:path'
+import { homedir } from 'node:os'
+import { basename, dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { runInNewContext } from 'node:vm'
 import { describe, expect, it } from 'vitest'
 import { dshClientBundle } from '../../../build/client-bundle'
 import { PLATFORM_MODULES } from '../../../build/web-platform'
 
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const bundlePath = resolve(packageRoot, 'lib', 'client.js')
+const controllerTypesPath = resolve(packageRoot, 'lib', 'types', 'client', 'controller.d.ts')
 
 describe('dsh-subagent-admission client bundle', () => {
   it('configures the standalone closure-factory handoff and external table', () => {
@@ -31,5 +34,55 @@ describe('dsh-subagent-admission client bundle', () => {
     expect(source).toMatch(/factory:\s*\(require\)\s*=>\s*\{/)
     expect(source).toContain('return module.exports;')
     expect(source.match(/window\.__ModuleLoader__\.load/g)).toHaveLength(1)
+  })
+
+  it('inlines the generated Remote closure without local-path or undeclared-module leaks', () => {
+    const source = readFileSync(bundlePath, 'utf8')
+    expect(source).toContain('dsh-subagent-admission#snapshot/get')
+    expect(source).toContain('dsh-subagent-admission#snapshot/watch')
+    expect(source).not.toContain(packageRoot)
+    expect(source).not.toContain(homedir())
+    expect(source).not.toContain(basename(homedir()))
+
+    let registration: {
+      readonly id: string
+      readonly factory: (require: (specifier: string) => unknown) => Record<string, unknown>
+    } | undefined
+    runInNewContext(source, {
+      AbortController,
+      clearTimeout,
+      console,
+      setTimeout,
+      window: {
+        __ModuleLoader__: {
+          load(value: typeof registration): void { registration = value },
+        },
+      },
+    })
+    expect(registration?.id).toBe('dsh-subagent-admission')
+
+    const required: string[] = []
+    const exports = registration!.factory((specifier) => {
+      required.push(specifier)
+      return {}
+    })
+    const allowed = new Set([
+      ...PLATFORM_MODULES,
+      '@deepseek-ai/dsh-client-runtime/client',
+    ])
+    expect(required.every(specifier => allowed.has(specifier as never))).toBe(true)
+    expect(required).not.toContain('zod')
+    expect(exports).toMatchObject({
+      name: 'dsh-subagent-admission',
+      inject: ['remote', 'slots', 'locale', 'sessions'],
+      apply: expect.any(Function),
+      AdmissionSnapshotController: expect.any(Function),
+    })
+  })
+
+  it('publishes a declaration closure with JavaScript relative specifiers', () => {
+    const source = readFileSync(controllerTypesPath, 'utf8')
+    expect(source).toContain("from '../types.js'")
+    expect(source).not.toMatch(/from ['"][^'"]+\.ts['"]/)
   })
 })
