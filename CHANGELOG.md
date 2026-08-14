@@ -19,6 +19,9 @@ candidates do not imply npm availability or upstream adoption.
 - Fixed packed-install pnpm command resolution on Windows by selecting
   `pnpm.cmd`, routing command shims through `cmd.exe`, and preserving an
   explicit `DSH_PNPM_BIN` override.
+- Separated platform-independent packed commands from their physical process
+  invocations in evidence reports, preserving both stable semantics and the
+  exact Windows `cmd.exe` launcher record.
 - Enabled the reviewed, exact-lock `node-pty` Linux native build and
   `dsh-subprocess-local` helper-permission scripts required by the packed stock
   Web acceptance gate.

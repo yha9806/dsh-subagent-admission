@@ -59,6 +59,24 @@ describe.sequential('packed DSH installation', () => {
     ])
     expect(install?.args.at(-1)).toBe(report.package.tarballPath)
     expect(isAbsolute(install!.args.at(-1)!)).toBe(true)
+    expect(install?.invocation.args.at(-1)).toBe(report.package.tarballPath)
+    if (
+      report.environment.platform === 'win32'
+      && /\.(?:cmd|bat)$/i.test(install!.executable)
+    ) {
+      expect(install?.invocation.executable).toMatch(/cmd\.exe$/i)
+      expect(install?.invocation.args.slice(0, 4)).toEqual([
+        '/d',
+        '/s',
+        '/c',
+        install?.executable,
+      ])
+    } else {
+      expect(install?.invocation).toEqual({
+        executable: install?.executable,
+        args: install?.args,
+      })
+    }
     expect(existsSync(report.temporaryRoot)).toBe(false)
   })
 

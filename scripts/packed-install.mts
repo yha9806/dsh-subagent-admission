@@ -37,8 +37,11 @@ const CHILD_STOP_TIMEOUT_MS = 15_000
 
 export interface PackedCommandReport {
   readonly name: string
+  /** Platform-independent command requested by the acceptance harness. */
   readonly executable: string
   readonly args: readonly string[]
+  /** Process invocation actually passed to Node's child_process API. */
+  readonly invocation: CommandInvocation
   readonly cwd: string
   readonly exitCode: number
   readonly stdoutSha256: string
@@ -133,6 +136,7 @@ export interface CommandInvocation {
 
 interface WebProcess {
   readonly child: ChildProcess
+  readonly command: CommandInvocation
   readonly invocation: CommandInvocation
   readonly serverUrl: string
   readonly stdout: () => string
@@ -191,6 +195,7 @@ function recordCommand(
   name: string,
   executable: string,
   args: readonly string[],
+  invocation: CommandInvocation,
   cwd: string,
   result: CommandResult,
 ): void {
@@ -198,6 +203,7 @@ function recordCommand(
     name,
     executable,
     args: Object.freeze([...args]),
+    invocation,
     cwd,
     exitCode: result.exitCode,
     stdoutSha256: sha256(result.stdout),
@@ -231,8 +237,9 @@ function command(
   recordCommand(
     commands,
     name,
-    invocation.executable,
-    invocation.args,
+    executable,
+    args,
+    invocation,
     cwd,
     normalized,
   )
@@ -535,7 +542,11 @@ async function startWeb(
     '--port',
     '0',
   ]
-  const invocation = resolveCommandInvocation(pnpm, args)
+  const command = Object.freeze({
+    executable: pnpm,
+    args: Object.freeze([...args]),
+  })
+  const invocation = resolveCommandInvocation(command.executable, command.args)
   const child = spawn(invocation.executable, [...invocation.args], {
     cwd: workspaceRoot,
     env: {
@@ -554,6 +565,7 @@ async function startWeb(
   const serverUrl = await waitForWeb(child, () => `${stdout}\n${stderr}`)
   return {
     child,
+    command,
     invocation,
     serverUrl,
     stdout: () => stdout,
@@ -978,8 +990,9 @@ export async function runPackedInstall(
     recordCommand(
       commands,
       'web-boot',
-      web.invocation.executable,
-      web.invocation.args,
+      web.command.executable,
+      web.command.args,
+      web.invocation,
       workspaceRoot,
       { stdout: web.stdout(), stderr: web.stderr(), exitCode: 0 },
     )
