@@ -20,14 +20,36 @@ every materialising agent workload should first acquire an explicit,
 observable, lifecycle-owned resource permit. v0.1 deliberately tests only the
 DSH subagent boundary.
 
-> **Release-candidate status:** the source is public at
-> [`yha9806/dsh-subagent-admission`](https://github.com/yha9806/dsh-subagent-admission),
-> while `0.1.0-rc.1` is not published to npm. The focused upstream
+> **Release-candidate status:** GitHub prerelease
+> [`v0.1.0-rc.1`](https://github.com/yha9806/dsh-subagent-admission/releases/tag/v0.1.0-rc.1)
+> is public, while the package is not published to npm. The focused upstream
 > extension-point question is now public in
 > [Discussion #131](https://github.com/deepseek-ai/deepseek-harness/discussions/131#discussioncomment-18020293).
 > This remains an independent community project, not an official DeepSeek
 > component. No DeepSeek endorsement or adoption, external-user evidence,
 > production deployment, or maintainer response has been observed.
+
+## Maintainer review path
+
+The upstream decision is deliberately one question:
+
+> Would an optional lifecycle-owned subagent admission capability belong as a
+> documented extension point?
+
+A bounded review can follow four artifacts:
+
+- [Agent Note](docs/upstream-agent-note.md): the protocol-v1 Service Definition,
+  Provider, Consumer, failure, and ownership contract;
+- [slim seam](docs/upstream-seam.md): the exact three-file lifecycle integration,
+  230 changed lines, and canonical patch identity;
+- [reproduction](docs/reproduction.md): the bounded, no-model 56-request shape
+  and its 56-to-4 provider-start result under Strict;
+- [public CI](https://github.com/yha9806/dsh-subagent-admission/actions/runs/31831430355):
+  exact-target conformance, crash recovery, packed installation, and native GUI
+  evidence on the release commit.
+
+The proposal does not ask DSH core to own quotas, policy, durable storage,
+telemetry, or UI. Those remain external plugin concerns.
 
 ## Why a shared protocol
 

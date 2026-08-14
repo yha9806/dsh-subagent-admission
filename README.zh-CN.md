@@ -17,12 +17,34 @@ runtime 调用者共同经过的、原子的、由真实生命周期持有的决
 agent workload 都应先获得一个显式、可观察、由真实生命周期持有的资源 permit。
 v0.1 只验证 DSH subagent 这一条极窄边界。
 
-> **候选版本状态：** 源码已公开在
-> [`yha9806/dsh-subagent-admission`](https://github.com/yha9806/dsh-subagent-admission)，
-> 但 `0.1.0-rc.1` 尚未发布到 npm。聚焦 upstream extension point 的问题现已公开
+> **候选版本状态：** GitHub prerelease
+> [`v0.1.0-rc.1`](https://github.com/yha9806/dsh-subagent-admission/releases/tag/v0.1.0-rc.1)
+> 已公开，但 package 尚未发布到 npm。聚焦 upstream extension point 的问题现已公开
 > 发布在 [Discussion #131](https://github.com/deepseek-ai/deepseek-harness/discussions/131#discussioncomment-18020293)。
 > 这仍是独立社区项目，不是 DeepSeek 官方组件；尚未观察到 DeepSeek 背书或采纳、
 > 外部用户证据、生产部署或 maintainer 回复。
+
+## Maintainer 最短审阅路径
+
+需要官方裁决的只有一个问题：
+
+> 是否应该把一个可选的、由 subagent 生命周期持有的 admission capability，
+> 作为 documented extension point？
+
+一次有界审阅只需要依次查看四个工件：
+
+- [Agent Note](docs/upstream-agent-note.md)：protocol-v1 的 Service Definition、
+  Provider、Consumer、失败语义与 ownership contract；
+- [slim seam](docs/upstream-seam.md)：只涉及三个官方文件、230 行变更，并绑定
+  canonical patch identity 的生命周期集成；
+- [复现说明](docs/reproduction.md)：有界、无模型的 56-request 形态，以及 Strict
+  下 provider start 从 56 降至 4 的结果；
+- [公开 CI](https://github.com/yha9806/dsh-subagent-admission/actions/runs/31831430355)：
+  在 release commit 上验证 exact-target conformance、crash recovery、packed
+  installation 与原生 GUI。
+
+该提案不要求 DSH core 承担 quota、policy、持久化存储、telemetry 或 UI；这些
+始终属于外部插件。
 
 ## 为什么需要共享协议
 

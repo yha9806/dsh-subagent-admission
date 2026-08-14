@@ -153,8 +153,10 @@ does not accept external pull requests and instead directs community work
 toward Discussions, independent plugins, the `dsh-plugin` topic, and technical
 write-ups. This repository therefore ships the independent experiment and
 concise design note first. It has published the authorized Discussion reply,
-but it has not submitted a PR, tag, or package release, and no maintainer reply
-or official adoption has been observed.
+and GitHub prerelease
+[`v0.1.0-rc.1`](https://github.com/yha9806/dsh-subagent-admission/releases/tag/v0.1.0-rc.1).
+It has not submitted an upstream PR or published the package to npm, and no
+maintainer reply or official adoption has been observed.
 
 ## Reproducible RED/GREEN verification
 

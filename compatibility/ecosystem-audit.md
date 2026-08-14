@@ -242,6 +242,10 @@ Proceed, but extremely narrowly:
 - Audit on stock DSH remains observability only and cannot solve #131.
 
 The user explicitly approved Reframe v2 and later authorised creation of the
-public repository and the initial `main` push on 2026-08-14. Public source now
-exists; this does not authorise or prove an npm package, tag/Release, official
-submission, Discussion reply, maintainer response, adoption, or production use.
+public repository and the initial `main` push on 2026-08-14. At that checkpoint,
+public source alone did not authorise or prove a tag/Release, npm package,
+official submission, Discussion reply, maintainer response, adoption, or
+production use. The Discussion reply and GitHub prerelease `v0.1.0-rc.1` were
+subsequently authorised and published as separate actions. They still do not
+establish npm publication, an upstream PR, maintainer response, official
+adoption, external use, or production deployment.

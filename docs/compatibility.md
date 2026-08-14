@@ -49,8 +49,9 @@ silently becomes Audit.
 - A documented official capability that supports **zero-patch Strict** is the
   productization gate. Permanently maintaining a private patched-upstream
   matrix is not the intended sustainable product.
-- The source repository is public. npm publication, external users, production
-  deployment, maintainer response, and DeepSeek adoption have not been shown.
+- The source repository and GitHub prerelease `v0.1.0-rc.1` are public. npm
+  publication, external users, production deployment, maintainer response, and
+  DeepSeek adoption have not been shown.
 
 For a stock-DSH, immediately installable per-turn safety circuit breaker,
 [`dsh-turn-budget`](https://github.com/Nunchakus888/dsh-turn-budget) is the
