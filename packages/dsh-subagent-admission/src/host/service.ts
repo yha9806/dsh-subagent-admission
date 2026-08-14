@@ -713,9 +713,11 @@ class BootstrapHeaders implements SessionHeaderReader {
 
   async inspect(
     sessionId: string,
+    signal?: AbortSignal,
   ): Promise<
     { readonly id: string; readonly parentSession?: string } | undefined
   > {
+    signal?.throwIfAborted()
     let live: HostSession | undefined
     try {
       live = this.sessions.get(sessionId)
@@ -733,12 +735,17 @@ class BootstrapHeaders implements SessionHeaderReader {
     if (cached !== undefined) {
       return resolverHeader(cached)
     }
+    signal?.throwIfAborted()
     let inspected: { readonly meta: HostSessionHeader } | undefined
     try {
-      inspected = await this.persistence.inspect(sessionId)
-    } catch {
+      inspected = await this.persistence.inspect(sessionId, signal)
+    } catch (error) {
+      if (signal?.aborted) {
+        throw error
+      }
       throw new BootstrapFailure('bootstrap-lineage-incomplete')
     }
+    signal?.throwIfAborted()
     if (inspected === undefined) {
       return undefined
     }

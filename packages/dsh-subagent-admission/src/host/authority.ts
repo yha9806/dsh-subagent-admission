@@ -23,6 +23,24 @@ export type AdmissionReleaseReason = Parameters<
   SubagentAdmissionPermitV1['release']
 >[0]
 
+type ReferenceReleaseReason =
+  | 'completed'
+  | 'aborted'
+  | 'error'
+  | 'disposed'
+
+type RuntimeReleaseReason =
+  | AdmissionReleaseReason
+  | ReferenceReleaseReason
+
+function normalizeReleaseReason(
+  reason: RuntimeReleaseReason,
+): AdmissionReleaseReason {
+  return reason === 'startup-failed'
+    ? 'startup-failed'
+    : 'quiescent'
+}
+
 export interface AdmissionClock {
   now(): number
 }
@@ -147,22 +165,25 @@ class AdmissionPermit implements SubagentAdmissionPermitV1 {
     this.bind(binding)
   }
 
-  release(reason: AdmissionReleaseReason): Promise<void> {
+  release(reason: RuntimeReleaseReason): Promise<void> {
+    const normalized = normalizeReleaseReason(reason)
     if (this.releasePromise !== undefined) {
       return this.releasePromise.then(() => {
-        this.recordDuplicate(reason)
+        this.recordDuplicate(normalized)
       })
     }
     this.releaseStarted = true
-    this.releasePromise = this.releaseOnce(reason)
+    this.releasePromise = this.releaseOnce(normalized)
     return this.releasePromise
   }
 }
 
+const REFERENCE_PATCH_SIGNAL = new AbortController().signal
+
 /**
  * The single Strict-mode admission authority.
  *
- * Prepares and releases share one serial section. The ledger callback performs
+ * Acquires and releases share one serial section. The ledger callback performs
  * root-active then global-active checks immediately before its one durable
  * write; lease insertion follows without I/O or caller callbacks. Events are
  * emitted only after the serial operation settles and can never change the
@@ -202,10 +223,22 @@ export class AdmissionAuthority implements SubagentAdmissionPolicyV1 {
     this.onInternalDiagnostic = options.onInternalDiagnostic
   }
 
-  async prepare(
+  /**
+   * Temporary runtime bridge for the retained reference patch. The canonical
+   * protocol surface is acquire(request, signal).
+   */
+  prepare(
+    request: SubagentAdmissionRequestV1,
+  ): Promise<SubagentAdmissionPermitV1> {
+    return this.acquire(request, REFERENCE_PATCH_SIGNAL)
+  }
+
+  async acquire(
     rawRequest: SubagentAdmissionRequestV1,
+    signal: AbortSignal,
   ): Promise<SubagentAdmissionPermitV1> {
     const request = this.validateRequest(rawRequest)
+    signal.throwIfAborted()
     if (this.admissionClosed) {
       const error = this.denial(
         ADMISSION_ERROR_CODES.ADMISSION_CLOSED,
@@ -222,7 +255,9 @@ export class AdmissionAuthority implements SubagentAdmissionPolicyV1 {
     let pendingDiagnostic: string | undefined
     try {
       const lease = await this.serial.run(async () => {
+        signal.throwIfAborted()
         this.assertOpen(request, resolvedRootId)
+        signal.throwIfAborted()
         try {
           await this.guard.assertHeld()
         } catch {
@@ -234,13 +269,18 @@ export class AdmissionAuthority implements SubagentAdmissionPolicyV1 {
             0,
           )
         }
+        signal.throwIfAborted()
 
         let lineage: Awaited<ReturnType<RootResolution['resolve']>>
         try {
-          lineage = await this.roots.resolve(request.parentSessionId)
+          lineage = await this.roots.resolve(request.parentSessionId, signal)
         } catch (error) {
+          if (signal.aborted) {
+            throw error
+          }
           throw this.normalizeError(error, request, resolvedRootId)
         }
+        signal.throwIfAborted()
         resolvedRootId = lineage.rootSessionId
 
         if (request.childSessionId !== undefined) {
@@ -324,6 +364,9 @@ export class AdmissionAuthority implements SubagentAdmissionPolicyV1 {
           this.bindingConflict(lease),
       })
     } catch (error) {
+      if (signal.aborted) {
+        throw error
+      }
       const normalized = this.normalizeError(error, request, resolvedRootId)
       if (pendingDiagnostic !== undefined) {
         this.diagnostic(pendingDiagnostic)

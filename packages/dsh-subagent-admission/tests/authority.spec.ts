@@ -99,6 +99,7 @@ interface ResolveGate {
 
 class FakeRoots implements RootResolution {
   readonly resolveCalls: string[] = []
+  readonly resolveSignals: Array<AbortSignal | undefined> = []
   readonly bindings: ChildBindingInput[] = []
   private readonly roots: Readonly<Record<string, string>>
   private readonly boundRoots = new Map<string, string>()
@@ -127,14 +128,19 @@ class FakeRoots implements RootResolution {
     return { entered, release: releaseResolve }
   }
 
-  async resolve(parentSessionId: string): Promise<ResolvedLineage> {
+  async resolve(
+    parentSessionId: string,
+    signal?: AbortSignal,
+  ): Promise<ResolvedLineage> {
     this.resolveCalls.push(parentSessionId)
+    this.resolveSignals.push(signal)
     const gate = this.nextGate
     if (gate !== undefined) {
       this.nextGate = undefined
       gate.entered()
       await gate.wait
     }
+    signal?.throwIfAborted()
     const rootSessionId = this.roots[parentSessionId]
     if (rootSessionId === undefined) {
       throw Object.freeze({ code: 'ADMISSION_UNAVAILABLE' })
@@ -261,23 +267,29 @@ function leaseFor(
   return lease as ActiveLease
 }
 
-describe('AdmissionAuthority prepare ordering', () => {
+describe('AdmissionAuthority acquire ordering', () => {
   it('denies before durable write, provider work, or materialization', async () => {
     const f = authorityFixture({
       limits: { ...LIMITS, globalActive: 1, perRootActive: 1 },
       parentRoots: { p1: 'r1', p2: 'r2' },
     })
-    const held = await f.authority.prepare(request('new-one-shot', 'p1'))
+    const held = await f.authority.acquire(
+      request('new-one-shot', 'p1'),
+      new AbortController().signal,
+    )
 
     await expect(
-      f.authority.prepare(request('new-one-shot', 'p2')),
+      f.authority.acquire(
+        request('new-one-shot', 'p2'),
+        new AbortController().signal,
+      ),
     ).rejects.toMatchObject({ code: 'GLOBAL_ACTIVE_LIMIT' })
     expect(f.ledger.writes).toBe(1)
     expect(f.providerCalls).toBe(0)
     expect(f.materializations).toBe(0)
     expect(f.leases.size).toBe(1)
 
-    await held.release('disposed')
+    await held.release('quiescent')
   })
 
   it('uses root-total, parent-total, root-active, global-active order', async () => {
@@ -288,13 +300,17 @@ describe('AdmissionAuthority prepare ordering', () => {
       perParentChildren: 1,
     }
     const rootFirst = authorityFixture({ limits: allOne })
-    const first = await rootFirst.authority.prepare(
+    const first = await rootFirst.authority.acquire(
       request('new-one-shot'),
+      new AbortController().signal,
     )
     await expect(
-      rootFirst.authority.prepare(request('new-one-shot')),
+      rootFirst.authority.acquire(
+        request('new-one-shot'),
+        new AbortController().signal,
+      ),
     ).rejects.toMatchObject({ code: 'ROOT_TOTAL_LIMIT' })
-    await first.release('disposed')
+    await first.release('quiescent')
 
     const parentFirst = authorityFixture({
       limits: {
@@ -303,40 +319,48 @@ describe('AdmissionAuthority prepare ordering', () => {
         perRootActive: 1,
       },
     })
-    const parentHeld = await parentFirst.authority.prepare(
+    const parentHeld = await parentFirst.authority.acquire(
       request('new-one-shot'),
+      new AbortController().signal,
     )
     await expect(
-      parentFirst.authority.prepare(request('new-one-shot')),
+      parentFirst.authority.acquire(
+        request('new-one-shot'),
+        new AbortController().signal,
+      ),
     ).rejects.toMatchObject({ code: 'PARENT_CHILD_LIMIT' })
-    await parentHeld.release('disposed')
+    await parentHeld.release('quiescent')
 
     const rootActiveFirst = authorityFixture({
       limits: { ...LIMITS, globalActive: 1, perRootActive: 1 },
     })
-    const rootHeld = await rootActiveFirst.authority.prepare(
+    const rootHeld = await rootActiveFirst.authority.acquire(
       request('cold-resume', 'p', 'child-1'),
+      new AbortController().signal,
     )
     await expect(
-      rootActiveFirst.authority.prepare(
+      rootActiveFirst.authority.acquire(
         request('cold-resume', 'p', 'child-2'),
+        new AbortController().signal,
       ),
     ).rejects.toMatchObject({ code: 'ROOT_ACTIVE_LIMIT' })
-    await rootHeld.release('disposed')
+    await rootHeld.release('quiescent')
 
     const globalOnly = authorityFixture({
       limits: { ...LIMITS, globalActive: 1, perRootActive: 1 },
       parentRoots: { p1: 'r1', p2: 'r2' },
     })
-    const globalHeld = await globalOnly.authority.prepare(
+    const globalHeld = await globalOnly.authority.acquire(
       request('cold-resume', 'p1', 'child-1'),
+      new AbortController().signal,
     )
     await expect(
-      globalOnly.authority.prepare(
+      globalOnly.authority.acquire(
         request('cold-resume', 'p2', 'child-2'),
+        new AbortController().signal,
       ),
     ).rejects.toMatchObject({ code: 'GLOBAL_ACTIVE_LIMIT' })
-    await globalHeld.release('disposed')
+    await globalHeld.release('quiescent')
   })
 
   it('does not create a lease when the durable reservation fails', async () => {
@@ -344,7 +368,10 @@ describe('AdmissionAuthority prepare ordering', () => {
     f.ledger.failWrites = true
 
     await expect(
-      f.authority.prepare(request('new-continuable', 'p', 'reserved-child')),
+      f.authority.acquire(
+        request('new-continuable', 'p', 'reserved-child'),
+        new AbortController().signal,
+      ),
     ).rejects.toMatchObject({ code: 'ADMISSION_STATE_IO' })
     expect(f.ledger.writes).toBe(0)
     expect(f.leases.size).toBe(0)
@@ -354,12 +381,15 @@ describe('AdmissionAuthority prepare ordering', () => {
     })
 
     f.ledger.failWrites = false
-    const recovered = await f.authority.prepare(request('new-one-shot'))
+    const recovered = await f.authority.acquire(
+      request('new-one-shot'),
+      new AbortController().signal,
+    )
     expect(f.ledger.writes).toBe(1)
-    await recovered.release('disposed')
+    await recovered.release('quiescent')
   })
 
-  it('linearizes concurrent prepares without admitting beyond global capacity', async () => {
+  it('linearizes concurrent acquires without admitting beyond global capacity', async () => {
     const f = authorityFixture({
       limits: { ...LIMITS, globalActive: 6, perRootActive: 4 },
       parentRoots: { p1: 'r1', p2: 'r2' },
@@ -367,8 +397,9 @@ describe('AdmissionAuthority prepare ordering', () => {
 
     const attempts = await Promise.allSettled(
       Array.from({ length: 10 }, (_, index) =>
-        f.authority.prepare(
+        f.authority.acquire(
           request('new-one-shot', index % 2 === 0 ? 'p1' : 'p2'),
+          new AbortController().signal,
         ),
       ),
     )
@@ -398,7 +429,7 @@ describe('AdmissionAuthority prepare ordering', () => {
     expect(f.leases.rootActive('r2')).toBe(3)
 
     await Promise.all(
-      accepted.map(async ({ value }) => value.release('disposed')),
+      accepted.map(async ({ value }) => value.release('quiescent')),
     )
     expect(f.leases.globalActive).toBe(0)
   })
@@ -407,8 +438,9 @@ describe('AdmissionAuthority prepare ordering', () => {
     const f = authorityFixture()
     const before = f.ledger.writes
 
-    const permit = await f.authority.prepare(
+    const permit = await f.authority.acquire(
       request('cold-resume', 'p', 'existing-child'),
+      new AbortController().signal,
     )
     expect(f.ledger.writes).toBe(before)
     expect(f.leases.size).toBe(1)
@@ -417,7 +449,7 @@ describe('AdmissionAuthority prepare ordering', () => {
       operation: 'cold-resume',
     })
 
-    await permit.release('completed')
+    await permit.release('quiescent')
     expect(f.leases.size).toBe(0)
   })
 
@@ -427,7 +459,10 @@ describe('AdmissionAuthority prepare ordering', () => {
     })
 
     await expect(
-      f.authority.prepare(request('new-one-shot')),
+      f.authority.acquire(
+        request('new-one-shot'),
+        new AbortController().signal,
+      ),
     ).rejects.toMatchObject({ code: 'ADMISSION_UNAVAILABLE' })
     expect(f.roots.resolveCalls).toEqual([])
     expect(f.ledger.trace).toEqual([])
@@ -441,7 +476,9 @@ describe('AdmissionAuthority prepare ordering', () => {
       operation: 'resident-follow-up',
     } as unknown as SubagentAdmissionRequestV1
 
-    await expect(f.authority.prepare(invalid)).rejects.toMatchObject({
+    await expect(
+      f.authority.acquire(invalid, new AbortController().signal),
+    ).rejects.toMatchObject({
       code: 'ADMISSION_UNAVAILABLE',
     })
     expect(f.guard.assertHeld).not.toHaveBeenCalled()
@@ -449,32 +486,124 @@ describe('AdmissionAuthority prepare ordering', () => {
     expect(f.ledger.trace).toEqual([])
   })
 
-  it('consumes nothing when the official caller cancels before invoking the policy', async () => {
+  it('consumes nothing and causes no guard, root, ledger, or lease mutation when pre-aborted', async () => {
     const f = authorityFixture()
     const controller = new AbortController()
     controller.abort()
 
-    if (!controller.signal.aborted) {
-      await f.authority.prepare(request('new-one-shot'))
-    }
+    await expect(
+      f.authority.acquire(request('new-one-shot'), controller.signal),
+    ).rejects.toThrow()
 
     expect(f.guard.assertHeld).not.toHaveBeenCalled()
     expect(f.roots.resolveCalls).toEqual([])
     expect(f.ledger.writes).toBe(0)
     expect(f.leases.size).toBe(0)
   })
+
+  it('causes no ledger write when aborted before root resolution completes', async () => {
+    const f = authorityFixture()
+    const gate = f.roots.blockNextResolve()
+    const controller = new AbortController()
+    const acquiring = f.authority.acquire(
+      request('new-one-shot'),
+      controller.signal,
+    )
+    await gate.entered
+    controller.abort()
+    gate.release()
+
+    await expect(acquiring).rejects.toThrow()
+    expect(f.guard.assertHeld).toHaveBeenCalled()
+    expect(f.roots.resolveCalls).toEqual(['p'])
+    expect(f.ledger.writes).toBe(0)
+    expect(f.leases.size).toBe(0)
+  })
+
+  it('causes no durable write when aborted after root resolution but before reserveNew', async () => {
+    const f = authorityFixture()
+    const controller = new AbortController()
+    const originalResolve = f.roots.resolve.bind(f.roots)
+    f.roots.resolve = async (parentSessionId, _signal) => {
+      const res = await originalResolve(parentSessionId, undefined)
+      controller.abort()
+      return res
+    }
+
+    await expect(
+      f.authority.acquire(request('new-one-shot'), controller.signal),
+    ).rejects.toThrow()
+    expect(f.ledger.writes).toBe(0)
+    expect(f.leases.size).toBe(0)
+  })
+
+  it('completes atomic ledger-plus-lease section once reserveNew begins and returns a permit for startup-failed release', async () => {
+    const f = authorityFixture()
+    const controller = new AbortController()
+    const originalReserve = f.ledger.reserveNew.bind(f.ledger)
+    f.ledger.reserveNew = async (input, assertActiveCapacity) => {
+      controller.abort()
+      return originalReserve(input, assertActiveCapacity)
+    }
+
+    const permit = await f.authority.acquire(
+      request('new-one-shot'),
+      controller.signal,
+    )
+    expect(permit).toBeDefined()
+    expect(f.ledger.writes).toBe(1)
+    expect(f.leases.size).toBe(1)
+
+    await permit.release('startup-failed')
+    expect(f.leases.size).toBe(0)
+    expect(f.events.at(-1)).toMatchObject({
+      kind: 'failed-start',
+      reason: 'startup-failed',
+    })
+  })
+
+  it('passes the exact caller signal to root resolution', async () => {
+    const f = authorityFixture()
+    const controller = new AbortController()
+    const permit = await f.authority.acquire(
+      request('new-one-shot'),
+      controller.signal,
+    )
+    expect(f.roots.resolveSignals[0]).toBe(controller.signal)
+    await permit.release('quiescent')
+  })
+
+  it('normalizes legacy disposed release reason to quiescent exactly once', async () => {
+    const f = authorityFixture()
+    const permit = await f.authority.acquire(
+      request('new-one-shot'),
+      new AbortController().signal,
+    )
+    // Invoking old release vocabulary through runtime release bridge:
+    const bridge = permit as unknown as { release(reason: 'disposed'): Promise<void> }
+    await bridge.release('disposed')
+    expect(f.leases.size).toBe(0)
+    expect(f.events.filter((e) => e.kind === 'released')).toHaveLength(1)
+    expect(f.events.at(-1)).toMatchObject({
+      kind: 'released',
+      reason: 'quiescent',
+      duplicate: false,
+    })
+  })
 })
 
 describe('AdmissionPermit binding and release', () => {
   it('rejects a duplicate known child before another cumulative write or active lease', async () => {
     const f = authorityFixture()
-    const first = await f.authority.prepare(
+    const first = await f.authority.acquire(
       request('new-continuable', 'p', 'reserved-child'),
+      new AbortController().signal,
     )
 
     await expect(
-      f.authority.prepare(
+      f.authority.acquire(
         request('new-continuable', 'p', 'reserved-child'),
+        new AbortController().signal,
       ),
     ).rejects.toMatchObject({
       code: 'ADMISSION_BINDING_CONFLICT',
@@ -484,34 +613,43 @@ describe('AdmissionPermit binding and release', () => {
     expect(f.ledger.writes).toBe(1)
     expect(f.leases.size).toBe(1)
 
-    await first.release('disposed')
+    await first.release('quiescent')
   })
 
   it('allows only one live cold-resume permit for the same existing child', async () => {
     const f = authorityFixture()
-    const first = await f.authority.prepare(
+    const first = await f.authority.acquire(
       request('cold-resume', 'p', 'existing-child'),
+      new AbortController().signal,
     )
 
     await expect(
-      f.authority.prepare(
+      f.authority.acquire(
         request('cold-resume', 'p', 'existing-child'),
+        new AbortController().signal,
       ),
     ).rejects.toMatchObject({ code: 'ADMISSION_BINDING_CONFLICT' })
     expect(f.ledger.writes).toBe(0)
     expect(f.leases.size).toBe(1)
 
-    await first.release('disposed')
-    const resumedAgain = await f.authority.prepare(
+    await first.release('quiescent')
+    const resumedAgain = await f.authority.acquire(
       request('cold-resume', 'p', 'existing-child'),
+      new AbortController().signal,
     )
-    await resumedAgain.release('completed')
+    await resumedAgain.release('quiescent')
   })
 
   it('rejects two otherwise valid permits binding the same live child', async () => {
     const f = authorityFixture()
-    const first = await f.authority.prepare(request('new-one-shot'))
-    const second = await f.authority.prepare(request('new-one-shot'))
+    const first = await f.authority.acquire(
+      request('new-one-shot'),
+      new AbortController().signal,
+    )
+    const second = await f.authority.acquire(
+      request('new-one-shot'),
+      new AbortController().signal,
+    )
 
     first.bindChild({
       childSessionId: 'published-child',
@@ -532,14 +670,15 @@ describe('AdmissionPermit binding and release', () => {
         .filter((lease) => lease.childSessionId === 'published-child'),
     ).toHaveLength(1)
 
-    await first.release('disposed')
+    await first.release('quiescent')
     await second.release('startup-failed')
   })
 
   it('binds at most once, accepts an identical repeat, and rejects conflicts', async () => {
     const f = authorityFixture()
-    const permit = await f.authority.prepare(
+    const permit = await f.authority.acquire(
       request('new-continuable', 'p', 'reserved-child'),
+      new AbortController().signal,
     )
     const binding = {
       childSessionId: 'reserved-child',
@@ -571,7 +710,7 @@ describe('AdmissionPermit binding and release', () => {
       ),
     ).toMatchObject({ code: 'ADMISSION_BINDING_CONFLICT' })
 
-    await permit.release('disposed')
+    await permit.release('quiescent')
     expect(
       captureSyncError(() => permit.bindChild(binding)),
     ).toMatchObject({ code: 'ADMISSION_BINDING_CONFLICT' })
@@ -579,12 +718,15 @@ describe('AdmissionPermit binding and release', () => {
 
   it('releases once under duplicate concurrent callbacks without negative counts', async () => {
     const f = authorityFixture()
-    const permit = await f.authority.prepare(request('new-one-shot'))
+    const permit = await f.authority.acquire(
+      request('new-one-shot'),
+      new AbortController().signal,
+    )
 
     await Promise.all([
-      permit.release('disposed'),
-      permit.release('disposed'),
-      permit.release('error'),
+      permit.release('quiescent'),
+      permit.release('quiescent'),
+      permit.release('quiescent'),
     ])
 
     expect(f.leases.size).toBe(0)
@@ -607,7 +749,10 @@ describe('AdmissionPermit binding and release', () => {
         perParentChildren: 1,
       },
     })
-    const permit = await f.authority.prepare(request('new-one-shot'))
+    const permit = await f.authority.acquire(
+      request('new-one-shot'),
+      new AbortController().signal,
+    )
     expect(f.leases.size).toBe(1)
 
     await permit.release('startup-failed')
@@ -620,7 +765,10 @@ describe('AdmissionPermit binding and release', () => {
     })
     expect(f.ledger.writes).toBe(1)
     await expect(
-      f.authority.prepare(request('new-one-shot')),
+      f.authority.acquire(
+        request('new-one-shot'),
+        new AbortController().signal,
+      ),
     ).rejects.toMatchObject({
       code: 'ROOT_TOTAL_LIMIT',
       observedValue: 1,
@@ -631,20 +779,26 @@ describe('AdmissionPermit binding and release', () => {
 })
 
 describe('AdmissionAuthority close and drain', () => {
-  it('tombstones new prepares synchronously while existing permits remain releasable', async () => {
+  it('tombstones new acquires synchronously while existing permits remain releasable', async () => {
     const f = authorityFixture()
-    const permit = await f.authority.prepare(request('new-one-shot'))
+    const permit = await f.authority.acquire(
+      request('new-one-shot'),
+      new AbortController().signal,
+    )
     const callsBeforeClose = f.guard.assertHeld.mock.calls.length
 
     f.authority.closeAdmission()
 
     expect(f.leases.snapshot()[0]).toMatchObject({ phase: 'draining' })
     await expect(
-      f.authority.prepare(request('new-one-shot')),
+      f.authority.acquire(
+        request('new-one-shot'),
+        new AbortController().signal,
+      ),
     ).rejects.toMatchObject({ code: 'ADMISSION_CLOSED' })
     expect(f.guard.assertHeld).toHaveBeenCalledTimes(callsBeforeClose)
 
-    await permit.release('disposed')
+    await permit.release('quiescent')
     await expect(f.authority.drain()).resolves.toBeUndefined()
   })
 
@@ -652,8 +806,14 @@ describe('AdmissionAuthority close and drain', () => {
     const f = authorityFixture({
       parentRoots: { p1: 'r1', p2: 'r2' },
     })
-    const first = await f.authority.prepare(request('new-one-shot', 'p1'))
-    const second = await f.authority.prepare(request('new-one-shot', 'p2'))
+    const first = await f.authority.acquire(
+      request('new-one-shot', 'p1'),
+      new AbortController().signal,
+    )
+    const second = await f.authority.acquire(
+      request('new-one-shot', 'p2'),
+      new AbortController().signal,
+    )
     f.authority.closeAdmission()
 
     let drained = false
@@ -663,21 +823,24 @@ describe('AdmissionAuthority close and drain', () => {
     await Promise.resolve()
     expect(drained).toBe(false)
 
-    await first.release('disposed')
+    await first.release('quiescent')
     await Promise.resolve()
     expect(drained).toBe(false)
     expect(f.leases.size).toBe(1)
 
-    await second.release('disposed')
+    await second.release('quiescent')
     await drain
     expect(drained).toBe(true)
     expect(f.leases.size).toBe(0)
   })
 
-  it('does not let drain finish ahead of a prepare already inside the serial section', async () => {
+  it('does not let drain finish ahead of an acquire already inside the serial section', async () => {
     const f = authorityFixture()
     const gate = f.roots.blockNextResolve()
-    const preparing = f.authority.prepare(request('new-one-shot'))
+    const acquiring = f.authority.acquire(
+      request('new-one-shot'),
+      new AbortController().signal,
+    )
     await gate.entered
 
     f.authority.closeAdmission()
@@ -689,19 +852,19 @@ describe('AdmissionAuthority close and drain', () => {
     expect(drained).toBe(false)
 
     gate.release()
-    const permit = await preparing
+    const permit = await acquiring
     await Promise.resolve()
     expect(drained).toBe(false)
     expect(f.leases.snapshot()[0]).toMatchObject({ phase: 'draining' })
 
-    await permit.release('disposed')
+    await permit.release('quiescent')
     await drain
     expect(drained).toBe(true)
   })
 })
 
 describe('authority/model trace parity', () => {
-  it('matches active and cumulative state across generated prepare, release, and unload sequences', async () => {
+  it('matches active and cumulative state across generated acquire, release, and unload sequences', async () => {
     const limits: AdmissionLimits = {
       globalActive: 3,
       perRootActive: 2,
@@ -710,7 +873,7 @@ describe('authority/model trace parity', () => {
     }
     const command = fc.oneof(
       fc.record({
-        kind: fc.constant('prepare' as const),
+        kind: fc.constant('acquire' as const),
         operation: fc.constantFrom(
           'new-one-shot' as const,
           'new-continuable' as const,
@@ -741,7 +904,7 @@ describe('authority/model trace parity', () => {
 
           try {
             for (const [index, next] of commands.entries()) {
-              if (next.kind === 'prepare') {
+              if (next.kind === 'acquire') {
                 const rootId = next.parentSessionId === 'p1' ? 'r1' : 'r2'
                 const requestId = `model-request-${String(index)}`
                 const childSessionId = `model-child-${String(index)}`
@@ -777,7 +940,10 @@ describe('authority/model trace parity', () => {
                 let actualPermit: SubagentAdmissionPermitV1 | undefined
                 let actualError: unknown
                 try {
-                  actualPermit = await f.authority.prepare(actualRequest)
+                  actualPermit = await f.authority.acquire(
+                    actualRequest,
+                    new AbortController().signal,
+                  )
                 } catch (error) {
                   actualError = error
                 }
@@ -811,7 +977,7 @@ describe('authority/model trace parity', () => {
                       kind: 'release',
                       permitId: held.modelPermitId,
                     })
-                    await held.actual.release('disposed')
+                    await held.actual.release('quiescent')
                     model = transition.state
                   }
                 }
@@ -852,7 +1018,7 @@ describe('authority/model trace parity', () => {
           } finally {
             await Promise.all(
               permits.map(async ({ actual }) => {
-                await actual.release('disposed').catch(() => undefined)
+                await actual.release('quiescent').catch(() => undefined)
               }),
             )
           }
@@ -873,14 +1039,20 @@ describe('post-commit fail-stop', () => {
     const f = authorityFixture({ leases: new FailingLeaseRegistry() })
 
     await expect(
-      f.authority.prepare(request('new-one-shot')),
+      f.authority.acquire(
+        request('new-one-shot'),
+        new AbortController().signal,
+      ),
     ).rejects.toMatchObject({ code: 'ADMISSION_STATE_IO' })
     expect(f.ledger.writes).toBe(1)
     expect(f.leases.size).toBe(0)
     expect(f.diagnostics).toEqual(['post-commit-lease-insertion-failed'])
 
     await expect(
-      f.authority.prepare(request('new-one-shot')),
+      f.authority.acquire(
+        request('new-one-shot'),
+        new AbortController().signal,
+      ),
     ).rejects.toMatchObject({ code: 'ADMISSION_CLOSED' })
     await expect(f.authority.drain()).resolves.toBeUndefined()
   })

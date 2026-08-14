@@ -16,19 +16,22 @@ export interface SubagentAdmissionRequestV1 {
   readonly childSessionId?: string
 }
 
+export type SubagentAdmissionReleaseReasonV1 =
+  | 'startup-failed'
+  | 'quiescent'
+
 export interface SubagentAdmissionPermitV1 {
   bindChild(binding: {
     readonly childSessionId: string
     readonly localParentSessionId?: string
   }): void
-  release(
-    reason: 'completed' | 'aborted' | 'error' | 'startup-failed' | 'disposed',
-  ): Promise<void>
+  release(reason: SubagentAdmissionReleaseReasonV1): Promise<void>
 }
 
 export interface SubagentAdmissionPolicyV1 {
   readonly protocolVersion: 1
-  prepare(
-    request: SubagentAdmissionRequestV1,
+  acquire(
+    request: Readonly<SubagentAdmissionRequestV1>,
+    signal: AbortSignal,
   ): Promise<SubagentAdmissionPermitV1>
 }

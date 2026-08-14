@@ -19,6 +19,7 @@ import { ADMISSION_ERROR_CODES } from './errors.js'
 export interface SessionHeaderReader {
   inspect(
     sessionId: string,
+    signal?: AbortSignal,
   ): Promise<
     { readonly id: string; readonly parentSession?: string } | undefined
   >
@@ -39,7 +40,10 @@ export interface ChildBindingInput {
 }
 
 export interface RootResolution {
-  resolve(parentSessionId: string): Promise<ResolvedLineage>
+  resolve(
+    parentSessionId: string,
+    signal?: AbortSignal,
+  ): Promise<ResolvedLineage>
   bindChild(input: ChildBindingInput): void
 }
 
@@ -94,7 +98,11 @@ export class DurableRootResolver implements RootResolution {
     this.headers = headers
   }
 
-  async resolve(parentSessionId: string): Promise<ResolvedLineage> {
+  async resolve(
+    parentSessionId: string,
+    signal?: AbortSignal,
+  ): Promise<ResolvedLineage> {
+    signal?.throwIfAborted()
     const memoized = this.resolved.get(parentSessionId)
     if (memoized !== undefined) {
       return memoized
@@ -106,7 +114,9 @@ export class DurableRootResolver implements RootResolution {
     let reachedRoot = false
 
     while (!reachedRoot) {
-      const header = await this.headers.inspect(currentId)
+      signal?.throwIfAborted()
+      const header = await this.headers.inspect(currentId, signal)
+      signal?.throwIfAborted()
       if (header === undefined) {
         failUnavailable(currentId)
       }
