@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -10,6 +10,7 @@ import { PLATFORM_MODULES } from '../../../build/web-platform'
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const bundlePath = resolve(packageRoot, 'lib', 'client.js')
 const controllerTypesPath = resolve(packageRoot, 'lib', 'types', 'client', 'controller.d.ts')
+const clientTypesDirectory = resolve(packageRoot, 'lib', 'types', 'client')
 
 describe('dsh-subagent-admission client bundle', () => {
   it('configures the standalone closure-factory handoff and external table', () => {
@@ -84,5 +85,18 @@ describe('dsh-subagent-admission client bundle', () => {
     const source = readFileSync(controllerTypesPath, 'utf8')
     expect(source).toContain("from '../types.js'")
     expect(source).not.toMatch(/from ['"][^'"]+\.ts['"]/)
+  })
+
+  it('keeps every native-view declaration portable and free of local paths', () => {
+    const declarations = readdirSync(clientTypesDirectory)
+      .filter(file => file.endsWith('.d.ts'))
+      .map(file => readFileSync(resolve(clientTypesDirectory, file), 'utf8'))
+    expect(declarations).not.toHaveLength(0)
+    for (const source of declarations) {
+      expect(source).not.toMatch(/from ['"][^'"]+\.ts['"]/)
+      expect(source).not.toContain(packageRoot)
+      expect(source).not.toContain(homedir())
+      expect(source).not.toContain(basename(homedir()))
+    }
   })
 })

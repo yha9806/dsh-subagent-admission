@@ -1,3 +1,5 @@
+// @vitest-environment jsdom
+
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
@@ -269,19 +271,39 @@ describe('AdmissionSnapshotController', () => {
 })
 
 describe('admission Client entry', () => {
-  it('mounts the generated Remote and tears the controller down before unmount', async () => {
+  it('registers the native view and tears resources down in reverse order', async () => {
     const events: string[] = []
     const stop = vi.spyOn(AdmissionSnapshotController.prototype, 'stop')
       .mockImplementation(() => { events.push('controller-stopped') })
     const disposeRemote = vi.fn(async () => { events.push('remote-unmounted') })
+    const disposeLocale = vi.fn(() => { events.push('locale-unregistered') })
+    const disposeView = vi.fn(() => { events.push('view-unregistered') })
     const get = vi.fn<AdmissionSnapshotRemote['get']>(async () => success(snapshot()))
     const watch = vi.fn<AdmissionSnapshotRemote['watch']>()
     const mount = vi.fn(async () => disposeRemote)
+    const registerLocale = vi.fn(() => disposeLocale)
+    const bindLocale = vi.fn(() => (key: string) => key === 'view.label'
+      ? 'Admission Control'
+      : key)
+    const registerView = vi.fn(() => disposeView)
+    const injectView = vi.fn((_key: string, install: () => () => void) => {
+      const dispose = install()
+      return () => { dispose() }
+    })
     const ctx = {
       remote: {
         $mount: mount,
         snapshot: { get, watch },
       },
+      locale: {
+        register: registerLocale,
+        bind: bindLocale,
+      },
+      slots: {
+        inject: injectView,
+        register: registerView,
+      },
+      sessions: {},
     } as unknown as ClientContext
 
     const dispose = await apply(ctx)
@@ -294,10 +316,32 @@ describe('admission Client entry', () => {
         { id: 'dsh-subagent-admission#snapshot/watch' },
       ],
     })
+    expect(registerLocale).toHaveBeenCalledTimes(1)
+    expect(injectView).toHaveBeenCalledWith('conversation.view', expect.any(Function))
+    expect(registerView).toHaveBeenCalledWith(expect.objectContaining({
+      name: 'conversation.view',
+      id: 'admission-control',
+      order: 20,
+      locale: 'admissionControl',
+      label: expect.any(Function),
+      inject: expect.any(Function),
+    }), expect.any(Function))
+    const options = registerView.mock.calls[0]?.[0] as { label(): string }
+    expect(options.label()).toBe('Admission Control')
+    expect(document.querySelector('style[data-plugin="dsh-subagent-admission"]')).not.toBeNull()
 
     await dispose()
+    await dispose()
+    expect(disposeView).toHaveBeenCalledTimes(1)
+    expect(disposeLocale).toHaveBeenCalledTimes(1)
     expect(disposeRemote).toHaveBeenCalledTimes(1)
-    expect(events).toEqual(['controller-stopped', 'remote-unmounted'])
+    expect(document.querySelector('style[data-plugin="dsh-subagent-admission"]')).toBeNull()
+    expect(events).toEqual([
+      'view-unregistered',
+      'locale-unregistered',
+      'controller-stopped',
+      'remote-unmounted',
+    ])
     stop.mockRestore()
   })
 })

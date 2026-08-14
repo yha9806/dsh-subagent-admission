@@ -1,12 +1,21 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
+    "jsx": "react-jsx",
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
     "rootDir": "src",
     "outDir": "lib/types",
     "tsBuildInfoFile": "lib/tsconfig.client.tsbuildinfo"
   },
   "files": [
     "src/client/index.ts",
-    "src/client/controller.ts"
+    "src/client/controller.ts",
+    "src/client/AdmissionControlView.tsx",
+    "src/client/locales.ts",
+    "src/client/styles.ts"
   ]
 }

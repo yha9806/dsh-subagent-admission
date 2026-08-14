@@ -1280,7 +1280,7 @@ Generated `lib` remains release-only under the Task 1 `.gitignore`; the tarball 
 - Consumes: `AdmissionSnapshotController`, DSH `conversation.view`, locale service, selected `sessionId`.
 - Produces: tab ID `admission-control`, order `20`, label “Admission Control”/“准入控制”; status, four quota cards, leases, history; no action callback.
 
-- [ ] **Step 1: Write semantic and forbidden-control tests**
+- [x] **Step 1: Write semantic and forbidden-control tests**
 
 ```tsx
 it('renders status, all four quotas, leases, and history without mutations', async () => {
@@ -1296,13 +1296,13 @@ it('renders status, all four quotas, leases, and history without mutations', asy
 
 Add Audit/Unavailable/Draining copy, empty states, dropped-history warning, keyboard tab switching through the real slot ring, locale switching, and color-independent icon/text labels.
 
-- [ ] **Step 2: Run and verify failure**
+- [x] **Step 2: Run and verify failure**
 
 Run: `corepack pnpm vitest run packages/dsh-subagent-admission/tests/admission-view.client.spec.tsx`
 
 Expected: FAIL because the view does not exist.
 
-- [ ] **Step 3: Implement the four fixed sections**
+- [x] **Step 3: Implement the four fixed sections**
 
 `AdmissionControlView` has no mutation props. It renders:
 
@@ -1317,7 +1317,7 @@ Expected: FAIL because the view does not exist.
 
 Use compact responsive CSS injected by `ensureAdmissionStyles()`. The disposer removes only `style[data-plugin="dsh-subagent-admission"]`. Text and symbols communicate every status without relying on green/red alone.
 
-- [ ] **Step 4: Register the native view**
+- [x] **Step 4: Register the native view**
 
 ```ts
 ctx.slots.inject('conversation.view', () => ctx.slots.register({
@@ -1332,7 +1332,7 @@ ctx.slots.inject('conversation.view', () => ctx.slots.register({
 
 The registration is additive and leaves Chat/Trajectory intact. Fiber disposal removes the view, stops polling, unregisters locale/style, and unmounts the Remote contribution in reverse order.
 
-- [ ] **Step 5: Run component and built-bundle tests**
+- [x] **Step 5: Run component and built-bundle tests**
 
 Run:
 
@@ -1343,7 +1343,7 @@ corepack pnpm build
 
 Expected: PASS; no visual-completion claim is made until a later real DSH screenshot is captured during packed-install QA.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add packages/dsh-subagent-admission/src/client packages/dsh-subagent-admission/tests/admission-view.client.spec.tsx
