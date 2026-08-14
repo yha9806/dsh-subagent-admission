@@ -18,7 +18,6 @@ import SubagentRuntime, {
   type SubagentAdmissionChildBindingV1,
   type SubagentAdmissionPermitV1,
   type SubagentAdmissionPolicyV1,
-  type SubagentAdmissionReleaseReasonV1,
   type SubagentAdmissionRequestV1,
   type SubagentProvider,
   type SubagentRun,
@@ -30,6 +29,31 @@ import {
   textResponse,
 } from '../../../core/agent-loop/tests/mock-adapter.ts'
 
+type SeamShape = 'reference' | 'slim'
+
+const SEAM_SHAPE: SeamShape | undefined = process.env.DSH_ADMISSION_SEAM_SHAPE as
+  | SeamShape
+  | undefined
+if (SEAM_SHAPE !== 'reference' && SEAM_SHAPE !== 'slim') {
+  throw new Error(
+    'DSH_ADMISSION_SEAM_SHAPE must be reference or slim',
+  )
+}
+
+type ObservedReleaseReason =
+  | 'completed'
+  | 'aborted'
+  | 'error'
+  | 'disposed'
+  | 'startup-failed'
+  | 'quiescent'
+
+const admissionEvent = (operation: string): string =>
+  (SEAM_SHAPE === 'slim' ? 'acquire:' : 'prepare:') + operation
+
+const quiescentReason: ObservedReleaseReason =
+  SEAM_SHAPE === 'slim' ? 'quiescent' : 'disposed'
+
 const NO_CAPABILITIES = {
   outputSchema: false,
   depthLimit: false,
@@ -39,8 +63,10 @@ const NO_CAPABILITIES = {
 
 interface PermitRecord {
   readonly request: SubagentAdmissionRequestV1
+  readonly signal: AbortSignal | undefined
+  readonly entry: 'prepare' | 'acquire'
   readonly bindings: SubagentAdmissionChildBindingV1[]
-  readonly releases: SubagentAdmissionReleaseReasonV1[]
+  readonly releases: ObservedReleaseReason[]
 }
 
 class RecordingPolicy implements SubagentAdmissionPolicyV1 {
@@ -55,22 +81,165 @@ class RecordingPolicy implements SubagentAdmissionPolicyV1 {
   async prepare(
     request: SubagentAdmissionRequestV1,
   ): Promise<SubagentAdmissionPermitV1> {
+    return this.issue(request, undefined, 'prepare')
+  }
+
+  async acquire(
+    request: Readonly<SubagentAdmissionRequestV1>,
+    signal: AbortSignal,
+  ): Promise<SubagentAdmissionPermitV1> {
+    return this.issue(request, signal, 'acquire')
+  }
+
+  private async issue(
+    request: SubagentAdmissionRequestV1,
+    signal: AbortSignal | undefined,
+    entry: 'prepare' | 'acquire',
+  ): Promise<SubagentAdmissionPermitV1> {
     const record: PermitRecord = {
       request,
+      signal,
+      entry,
       bindings: [],
       releases: [],
     }
     this.records.push(record)
-    this.events.push(`prepare:${request.operation}`)
+    this.events.push(entry + ':' + request.operation)
     return {
       bindChild: (binding): void => {
         record.bindings.push(binding)
-        this.events.push(`bind:${binding.childSessionId}`)
+        this.events.push('bind:' + binding.childSessionId)
       },
       release: async (reason): Promise<void> => {
         record.releases.push(reason)
-        this.releaseOrder.push(request.childSessionId ?? request.parentSessionId)
+        this.releaseOrder.push(
+          request.childSessionId ?? request.parentSessionId,
+        )
+        this.events.push('release:' + reason)
+      },
+    }
+  }
+}
+
+class UnsupportedProtocolPolicy {
+  readonly protocolVersion = 2 as const
+
+  async prepare(): Promise<never> {
+    throw new Error('must not prepare')
+  }
+
+  async acquire(): Promise<never> {
+    throw new Error('must not acquire')
+  }
+}
+
+class RejectBindingPolicy implements SubagentAdmissionPolicyV1 {
+  readonly protocolVersion = 1 as const
+
+  constructor(private readonly events: string[]) {}
+
+  async prepare(
+    _request: SubagentAdmissionRequestV1,
+  ): Promise<SubagentAdmissionPermitV1> {
+    return this.issue()
+  }
+
+  async acquire(
+    _request: Readonly<SubagentAdmissionRequestV1>,
+    _signal: AbortSignal,
+  ): Promise<SubagentAdmissionPermitV1> {
+    return this.issue()
+  }
+
+  private issue(): SubagentAdmissionPermitV1 {
+    return {
+      bindChild: (): never => {
+        this.events.push('bind-rejected')
+        throw new Error('binding rejected')
+      },
+      release: async (reason): Promise<void> => {
         this.events.push(`release:${reason}`)
+      },
+    }
+  }
+}
+
+class ExactSignalPolicy implements SubagentAdmissionPolicyV1 {
+  readonly protocolVersion = 1 as const
+
+  constructor(private readonly onSignal: (signal: AbortSignal) => void) {}
+
+  async prepare(): Promise<never> {
+    throw new Error('reference-only method must stay skipped')
+  }
+
+  async acquire(
+    _request: Readonly<SubagentAdmissionRequestV1>,
+    signal: AbortSignal,
+  ): Promise<SubagentAdmissionPermitV1> {
+    this.onSignal(signal)
+    return {
+      bindChild: (): void => {},
+      release: async (): Promise<void> => {},
+    }
+  }
+}
+
+class CancelAfterAcquirePolicy implements SubagentAdmissionPolicyV1 {
+  readonly protocolVersion = 1 as const
+
+  constructor(
+    private readonly controller: AbortController,
+    private readonly events: string[],
+  ) {}
+
+  async prepare(): Promise<never> {
+    throw new Error('reference-only method must stay skipped')
+  }
+
+  async acquire(
+    _request: Readonly<SubagentAdmissionRequestV1>,
+    signal: AbortSignal,
+  ): Promise<SubagentAdmissionPermitV1> {
+    expect(signal).toBe(this.controller.signal)
+    this.events.push('acquire')
+    this.controller.abort()
+    return {
+      bindChild: (): void => {
+        this.events.push('bind')
+      },
+      release: async (reason): Promise<void> => {
+        this.events.push('release:' + reason)
+      },
+    }
+  }
+}
+
+class AbortDuringPublicationPolicy implements SubagentAdmissionPolicyV1 {
+  readonly protocolVersion = 1 as const
+
+  constructor(
+    private readonly controller: AbortController,
+    private readonly events: string[],
+  ) {}
+
+  async prepare(): Promise<never> {
+    throw new Error('reference-only method must stay skipped')
+  }
+
+  async acquire(
+    _request: Readonly<SubagentAdmissionRequestV1>,
+    signal: AbortSignal,
+  ): Promise<SubagentAdmissionPermitV1> {
+    expect(signal).toBe(this.controller.signal)
+    this.events.push('acquire')
+    return {
+      bindChild: (): void => {
+        this.events.push('bind')
+        this.controller.abort()
+      },
+      release: async (reason): Promise<void> => {
+        this.events.push('release:' + reason)
       },
     }
   }
@@ -146,12 +315,7 @@ describe('SubagentRuntime protocol-v1 admission registration', () => {
 
   it('rejects a policy whose explicit protocol is not version 1', async () => {
     const { runtime } = await bareRuntime()
-    const unsupported = {
-      protocolVersion: 2,
-      prepare: async (): Promise<never> => {
-        throw new Error('must not prepare')
-      },
-    }
+    const unsupported = new UnsupportedProtocolPolicy()
 
     expect(() => runtime.registerAdmissionPolicy(unsupported as never))
       .toThrow(expect.objectContaining({ code: 'UNSUPPORTED_ADMISSION_PROTOCOL' }))
@@ -159,7 +323,7 @@ describe('SubagentRuntime protocol-v1 admission registration', () => {
 })
 
 describe('one-shot admission ownership', () => {
-  it('prepares before provider startup, binds publication, and releases after quiescence', async () => {
+  it('admits before provider startup, binds publication, and releases after quiescence', async () => {
     const { runtime } = await bareRuntime()
     const events: string[] = []
     const policy = new RecordingPolicy(events)
@@ -194,7 +358,7 @@ describe('one-shot admission ownership', () => {
     const run = await runtime.start('spawn', oneShotRequest(parent))
 
     expect(events.slice(0, 3)).toEqual([
-      'prepare:new-one-shot',
+      admissionEvent('new-one-shot'),
       'provider',
       'bind:local-child',
     ])
@@ -215,6 +379,7 @@ describe('one-shot admission ownership', () => {
       localParentSessionId: 'root-parent',
     }])
 
+    // Result settlement is not release evidence.
     await run.result
     expect(policy.records[0]?.releases).toEqual([])
     const disposing = run.dispose()
@@ -227,9 +392,9 @@ describe('one-shot admission ownership', () => {
     await run.dispose()
     expect(events.slice(-2)).toEqual([
       'provider-dispose-end',
-      'release:disposed',
+      `release:${quiescentReason}`,
     ])
-    expect(policy.records[0]?.releases).toEqual(['disposed'])
+    expect(policy.records[0]?.releases).toEqual([quiescentReason])
   })
 
   it('releases a charged permit only after provider rejection cleanup', async () => {
@@ -245,7 +410,7 @@ describe('one-shot admission ownership', () => {
     await expect(runtime.start('failed', oneShotRequest()))
       .rejects.toThrow('provider rejected after cleanup')
     expect(events).toEqual([
-      'prepare:new-one-shot',
+      admissionEvent('new-one-shot'),
       'provider-cleaned',
       'release:startup-failed',
     ])
@@ -275,18 +440,7 @@ describe('one-shot admission ownership', () => {
   it('cleans a published run before releasing when child binding fails', async () => {
     const { runtime } = await bareRuntime()
     const events: string[] = []
-    const policy: SubagentAdmissionPolicyV1 = {
-      protocolVersion: 1,
-      prepare: async () => ({
-        bindChild: (): never => {
-          events.push('bind-rejected')
-          throw new Error('binding rejected')
-        },
-        release: async (reason): Promise<void> => {
-          events.push(`release:${reason}`)
-        },
-      }),
-    }
+    const policy = new RejectBindingPolicy(events)
     runtime.registerAdmissionPolicy(policy)
     registerOneShotProvider(runtime, 'binding', async () => ({
       ...remoteRun('binding-child'),
@@ -307,18 +461,7 @@ describe('one-shot admission ownership', () => {
   it('retains capacity when binding rollback cannot quiesce the child', async () => {
     const { runtime } = await bareRuntime()
     const events: string[] = []
-    runtime.registerAdmissionPolicy({
-      protocolVersion: 1,
-      prepare: async () => ({
-        bindChild: (): never => {
-          events.push('bind-rejected')
-          throw new Error('binding rejected')
-        },
-        release: async (reason): Promise<void> => {
-          events.push(`release:${reason}`)
-        },
-      }),
-    })
+    runtime.registerAdmissionPolicy(new RejectBindingPolicy(events))
     registerOneShotProvider(runtime, 'unclean-binding', async () => ({
       ...remoteRun('unclean-binding-child'),
       dispose: async (): Promise<never> => {
@@ -354,7 +497,7 @@ describe('one-shot admission ownership', () => {
     expect(starts).toBe(1)
     expect(policy.records).toHaveLength(1)
     await first.dispose()
-    expect(policy.records[0]?.releases).toEqual(['disposed'])
+    expect(policy.records[0]?.releases).toEqual([quiescentReason])
   })
 
   it('returns the original provider run unchanged when no policy is registered', async () => {
@@ -391,8 +534,87 @@ describe('one-shot admission ownership', () => {
       expect(policy.records).toHaveLength(1)
       expect(policy.records[0]).toMatchObject({
         request: { operation: 'new-one-shot', provider },
-        releases: ['disposed'],
+        releases: [quiescentReason],
       })
+    },
+  )
+
+  it.skipIf(SEAM_SHAPE === 'reference')(
+    'passes the exact caller signal to policy acquisition',
+    async () => {
+      const { runtime } = await bareRuntime()
+      const controller = new AbortController()
+      let observedSignal: AbortSignal | undefined
+      runtime.registerAdmissionPolicy(
+        new ExactSignalPolicy((signal) => {
+          observedSignal = signal
+        }),
+      )
+      registerOneShotProvider(runtime, 'spawn', async () => remoteRun('child'))
+
+      const run = await runtime.start(
+        'spawn',
+        oneShotRequest(fakeParent(), { signal: controller.signal }),
+      )
+      expect(observedSignal).toBe(controller.signal)
+      await run.dispose()
+    },
+  )
+
+  it.skipIf(SEAM_SHAPE === 'reference')(
+    'releases after cancellation wins following acquire and starts no provider',
+    async () => {
+      const { runtime } = await bareRuntime()
+      const controller = new AbortController()
+      const events: string[] = []
+      let starts = 0
+      runtime.registerAdmissionPolicy(
+        new CancelAfterAcquirePolicy(controller, events),
+      )
+      registerOneShotProvider(runtime, 'spawn', async () => {
+        starts += 1
+        return remoteRun('never-started')
+      })
+
+      await expect(runtime.start(
+        'spawn',
+        oneShotRequest(fakeParent(), { signal: controller.signal }),
+      )).rejects.toMatchObject({ name: 'AbortError' })
+      expect(starts).toBe(0)
+      expect(events).toEqual(['acquire', 'release:startup-failed'])
+    },
+  )
+
+  it.skipIf(SEAM_SHAPE === 'reference')(
+    'rolls back a published provider run before releasing when caller cancellation wins during publication',
+    async () => {
+      const { runtime } = await bareRuntime()
+      const controller = new AbortController()
+      const events: string[] = []
+      runtime.registerAdmissionPolicy(
+        new AbortDuringPublicationPolicy(controller, events),
+      )
+      registerOneShotProvider(runtime, 'spawn', async () => {
+        events.push('provider')
+        return {
+          ...remoteRun('aborted-child'),
+          dispose: async (): Promise<void> => {
+            events.push('provider-disposed')
+          },
+        }
+      })
+
+      await expect(runtime.start(
+        'spawn',
+        oneShotRequest(fakeParent(), { signal: controller.signal }),
+      )).rejects.toMatchObject({ name: 'AbortError' })
+      expect(events).toEqual([
+        'acquire',
+        'provider',
+        'bind',
+        'provider-disposed',
+        'release:startup-failed',
+      ])
     },
   )
 })
@@ -540,7 +762,7 @@ describe('continuable admission ownership', () => {
       continuableSpec(parent),
     )
     expect(order.slice(0, 4)).toEqual([
-      'prepare:new-continuable',
+      admissionEvent('new-continuable'),
       'provider',
       'materialize',
       `bind:${started.childId}`,
@@ -559,7 +781,7 @@ describe('continuable admission ownership', () => {
     expect(policy.records).toHaveLength(1)
     firstTurn.resolve()
     await waitNoActivation(ctx, started.childId)
-    expect(policy.records[0]?.releases).toEqual(['disposed'])
+    expect(policy.records[0]?.releases).toEqual([quiescentReason])
 
     await followup(ctx, parent, started.childId, 'cold resume')
     expect(policy.records).toHaveLength(2)
@@ -570,7 +792,7 @@ describe('continuable admission ownership', () => {
       childSessionId: started.childId,
     })
     await waitNoActivation(ctx, started.childId)
-    expect(policy.records[1]?.releases).toEqual(['disposed'])
+    expect(policy.records[1]?.releases).toEqual([quiescentReason])
   })
 
   it('releases fresh admission after provider preparation rejects', async () => {
@@ -587,7 +809,7 @@ describe('continuable admission ownership', () => {
       ctx.subagents.startContinuable(continuableSpec(parent, 'failed')),
     ).rejects.toThrow('preparation rejected')
     expect(events).toEqual([
-      'prepare:new-continuable',
+      admissionEvent('new-continuable'),
       'provider-cleaned',
       'release:startup-failed',
     ])
