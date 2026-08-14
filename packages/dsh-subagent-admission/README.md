@@ -22,10 +22,12 @@ DSH subagent boundary.
 
 > **Release-candidate status:** the source is public at
 > [`yha9806/dsh-subagent-admission`](https://github.com/yha9806/dsh-subagent-admission),
-> while `0.1.0-rc.1` is not published to npm. This is an independent community
-> project, not an official DeepSeek component. It has no DeepSeek endorsement
-> or adoption, external-user evidence, production deployment, or maintainer
-> response.
+> while `0.1.0-rc.1` is not published to npm. The focused upstream
+> extension-point question is now public in
+> [Discussion #131](https://github.com/deepseek-ai/deepseek-harness/discussions/131#discussioncomment-18020293).
+> This remains an independent community project, not an official DeepSeek
+> component. No DeepSeek endorsement or adoption, external-user evidence,
+> production deployment, or maintainer response has been observed.
 
 ## Why a shared protocol
 
@@ -238,11 +240,11 @@ DeepSeek adoption, and maintainer response remain separate gates.
 To propose this optional lifecycle-owned admission capability to DeepSeek Harness maintainers without requesting core inclusion of plugin policy or UI, this repository provides:
 
 - [Proposed Agent Note](docs/upstream-agent-note.md) — formal Service Definition / Provider / Consumer specification of `registerAdmissionPolicy(policy)` and protocol v1;
-- [Discussion #131 draft](docs/discussion-131-draft.md) — concise (150–180 words), evidence-first discussion draft asking one focused extension-point question;
+- [Published Discussion #131 reply source](docs/discussion-131-draft.md) — the evidence-first source of the authorized public reply asking one focused extension-point question;
 - [Experimental upstream seam](docs/upstream-seam.md) — detailed call-site analysis and dual-patch qualification data;
 - Verified patches: canonical slim baseline (`patches/dsh-subagent-admission-seam-slim.patch`) and recoverable reference (`patches/dsh-subagent-admission-seam.patch`).
 
-> **Note on external boundaries:** The presence of a tracked Discussion draft does not authorize posting. No maintainer reply, official PR submission, or adoption has occurred. The architecture maintains an 80% protocol/policy kernel and 20% native GUI split: the GUI is an operator surface, not the product boundary. Zero-patch Strict remains the ultimate productization gate.
+> **Note on external boundaries:** The tracked Discussion source now matches the authorized public reply. It does not authorize follow-up comments. No maintainer reply, official PR submission, or adoption has occurred. The architecture maintains an 80% protocol/policy kernel and 20% native GUI split: the GUI is an operator surface, not the product boundary. Zero-patch Strict remains the ultimate productization gate.
 
 ## Project documents
 
@@ -250,7 +252,7 @@ To propose this optional lifecycle-owned admission capability to DeepSeek Harnes
 - [Compatibility matrix and upgrade gate](docs/compatibility.md)
 - [Experimental upstream seam](docs/upstream-seam.md)
 - [Proposed upstream Agent Note](docs/upstream-agent-note.md)
-- [Discussion #131 draft](docs/discussion-131-draft.md)
+- [Published Discussion #131 reply source](docs/discussion-131-draft.md)
 - [Novelty and ecosystem audit](compatibility/ecosystem-audit.md)
 - [Safe #131 reproduction](docs/reproduction.md)
 - [Security policy](SECURITY.md)

@@ -19,8 +19,10 @@ v0.1 只验证 DSH subagent 这一条极窄边界。
 
 > **候选版本状态：** 源码已公开在
 > [`yha9806/dsh-subagent-admission`](https://github.com/yha9806/dsh-subagent-admission)，
-> 但 `0.1.0-rc.1` 尚未发布到 npm。这是独立社区项目，不是 DeepSeek 官方组件，
-> 没有 DeepSeek 背书或采纳、外部用户证据、生产部署或 maintainer 回复。
+> 但 `0.1.0-rc.1` 尚未发布到 npm。聚焦 upstream extension point 的问题现已公开
+> 发布在 [Discussion #131](https://github.com/deepseek-ai/deepseek-harness/discussions/131#discussioncomment-18020293)。
+> 这仍是独立社区项目，不是 DeepSeek 官方组件；尚未观察到 DeepSeek 背书或采纳、
+> 外部用户证据、生产部署或 maintainer 回复。
 
 ## 为什么需要共享协议
 
@@ -211,11 +213,11 @@ workflow runs 才是远端证据，仅有 workflow 配置或本地结果不是�
 为了向 DeepSeek Harness maintainers 提议这一可选的生命周期准入能力（且不要求 core 包含插件的策略与 UI），本仓库提供：
 
 - [提议的 Agent Note](docs/upstream-agent-note.md) — 关于 `registerAdmissionPolicy(policy)` 与 protocol v1 的正式 Service Definition / Provider / Consumer 规范；
-- [Discussion #131 讨论草案](docs/discussion-131-draft.md) — 紧凑（150–180 词）、以证据为先的草案，仅提出一个聚焦的扩展点设计问题；
+- [已发布的 Discussion #131 回复源文](docs/discussion-131-draft.md) — 经授权公开回复的证据优先源文，仅提出一个聚焦的扩展点设计问题；
 - [实验性 upstream seam](docs/upstream-seam.md) — 详细的 call-site 分析与双 patch 验证数据；
 - 验证补丁：canonical slim 基准 (`patches/dsh-subagent-admission-seam-slim.patch`) 与可恢复 reference (`patches/dsh-subagent-admission-seam.patch`)。
 
-> **外部边界说明：** 跟踪 Discussion 草案不构成发布授权。未收到 maintainer 回复、未提交官方 PR，亦无官方采纳。架构始终保持 80% 协议与策略内核 / 20% 原生 GUI 的分工：GUI 是操作员观察界面，绝非产品边界。Zero-patch Strict 始终是最终产品化门禁。
+> **外部边界说明：** 跟踪的 Discussion 源文现与经授权公开的回复一致，但不构成继续跟帖的授权。未收到 maintainer 回复、未提交官方 PR，亦无官方采纳。架构始终保持 80% 协议与策略内核 / 20% 原生 GUI 的分工：GUI 是操作员观察界面，绝非产品边界。Zero-patch Strict 始终是最终产品化门禁。
 
 ## 项目文档
 
@@ -223,7 +225,7 @@ workflow runs 才是远端证据，仅有 workflow 配置或本地结果不是�
 - [兼容矩阵与升级 gate](docs/compatibility.md)
 - [实验性 upstream seam](docs/upstream-seam.md)
 - [提议的 upstream Agent Note](docs/upstream-agent-note.md)
-- [Discussion #131 草案](docs/discussion-131-draft.md)
+- [已发布的 Discussion #131 回复源文](docs/discussion-131-draft.md)
 - [新颖性与生态审计](compatibility/ecosystem-audit.md)
 - [安全复现 #131](docs/reproduction.md)
 - [安全策略](SECURITY.md)
