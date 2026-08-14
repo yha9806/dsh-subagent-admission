@@ -549,6 +549,7 @@ describe('AdmissionPermit binding and release', () => {
     expect(() => permit.bindChild(binding)).not.toThrow()
     expect(() => permit.bindChild(binding)).not.toThrow()
     expect(f.roots.bindings).toHaveLength(1)
+    expect(f.events.filter((event) => event.kind === 'bound')).toHaveLength(1)
     expect(f.leases.snapshot()[0]).toMatchObject({
       childSessionId: 'reserved-child',
     })

@@ -35,7 +35,12 @@ export interface AdmissionLedger {
 }
 
 export interface AdmissionAuthorityEvent {
-  readonly kind: 'accepted' | 'denied' | 'released' | 'failed-start'
+  readonly kind:
+    | 'accepted'
+    | 'bound'
+    | 'denied'
+    | 'released'
+    | 'failed-start'
   readonly time: number
   readonly requestId: string
   readonly operation: AdmissionOperation
@@ -381,6 +386,18 @@ export class AdmissionAuthority implements SubagentAdmissionPolicyV1 {
           : { localParentSessionId: binding.localParentSessionId }),
       })
       this.leases.bind(lease.permitId, binding.childSessionId)
+      const bound = this.leases.get(lease.permitId)
+      if (bound === undefined) {
+        throw new Error('bound lease disappeared')
+      }
+      this.emit(
+        this.eventForLease('bound', bound, {
+          childSessionId: binding.childSessionId,
+          code: null,
+          reason: null,
+          duplicate: false,
+        }),
+      )
     } catch {
       throw this.bindingConflict(lease)
     }

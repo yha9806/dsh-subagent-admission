@@ -48,7 +48,8 @@ export interface AdmissionUsage {
 export type AdmissionLeasePhase = 'active' | 'draining'
 
 export interface AdmissionLease {
-  readonly childSessionId: string
+  /** Null while a one-shot provider has not yet published its child identity. */
+  readonly childSessionId: string | null
   readonly parentSessionId: string
   readonly rootId: string
   readonly operation: AdmissionOperation
@@ -83,6 +84,8 @@ export interface AdmissionSnapshot {
   readonly requestedSessionId: string
   readonly requestedRootId: string | null
   readonly mode: AdmissionMode
+  /** True only when this snapshot describes protocol-backed enforcement. */
+  readonly enforced: boolean
   readonly reason: string | null
   readonly limits: AdmissionLimits
   readonly usage: AdmissionUsage
