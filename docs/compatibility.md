@@ -14,8 +14,8 @@ The blocking machine-readable source is
 | npm `@deepseek-ai/dsh` latest/next | `0.1.0-rc.6` / `0.1.0-rc.6` |
 | npm `@deepseek-ai/dsh-subagent` latest/next | `0.0.1-rc.1` / `0.1.0-rc.6` |
 | Protocol | `1` |
-| Reference patch | `patches/dsh-subagent-admission-seam.patch` |
-| Patch SHA-256 | `1340a9ffabde8310f68a7d66c4dacecda5dba263dd51666740801f5ec2c69135` |
+| Reference patch (canonical) | `patches/dsh-subagent-admission-seam.patch` (`1340a9ffabde8310f68a7d66c4dacecda5dba263dd51666740801f5ec2c69135`) |
+| Slim candidate (qualified) | `patches/dsh-subagent-admission-seam-slim.patch` (`b29860806eb446dc4df1789565c26192b808d638cf404b237c447df10f75c215`) |
 | Plugin candidate | `dsh-subagent-admission@0.1.0-rc.1` |
 
 The official source package at HEAD and npm `next` are different builds. The
@@ -82,11 +82,14 @@ pnpm baseline:check
 # Prove the test fixture fails against unpatched stock source.
 pnpm exec tsx scripts/verify-seam-patch.mts --expect-unpatched-failure
 
-# Preflight/apply/build/test in a disposable exact-source worktree.
-pnpm exec tsx scripts/verify-seam-patch.mts
+# Preflight/apply/build/test reference patch in a disposable worktree.
+pnpm exec tsx scripts/verify-seam-patch.mts --patch reference
+
+# Preflight/apply/build/test slim candidate patch in a disposable worktree.
+pnpm exec tsx scripts/verify-seam-patch.mts --patch slim
 
 # Compose packed stock Audit and exact-target Strict.
-pnpm exec tsx scripts/run-strict-conformance.mts
+pnpm exec tsx scripts/run-strict-conformance.mts --patch slim
 
 # Exercise the real package install and native Web integration.
 pnpm test:e2e -- tests/packed-install.e2e.ts
