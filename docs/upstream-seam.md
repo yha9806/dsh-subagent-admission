@@ -1,14 +1,17 @@
-# Minimal DSH subagent admission seam
+# Minimal DSH shared lifecycle admission seam
 
 This repository proposes one optional, versioned ownership seam in the official
-`@deepseek-ai/dsh-subagent` runtime. It lets an external plugin decide whether a
-new child or cold activation may materialize, while leaving provider execution,
-Agent construction, continuation routing, and teardown under the official
-runtime's control.
+`@deepseek-ai/dsh-subagent` runtime. It lets one external policy make an atomic
+decision shared by built-in tools, plugins, providers, SDK callers, and direct
+runtime calls before a new child or cold activation may materialize. Provider
+execution, Agent construction, continuation routing, and teardown remain under
+the official runtime's control.
 
 The proposal is deliberately narrower than an admission-control product. The
 official patch contains no limits, queue, durable ledger, root resolver,
-telemetry, or GUI. Those remain external policy concerns.
+telemetry, or GUI. Those remain external policy concerns. Existing plugins may
+keep their own product-level limits and UIs; normal calls through the shared
+runtime receive Host admission without importing another tool-specific API.
 
 ## Verified target
 
@@ -18,7 +21,7 @@ telemetry, or GUI. Those remain external policy concerns.
 | Source commit | `47f943859bef60e4160492346772ded9b24f765a` |
 | Source package | `@deepseek-ai/dsh-subagent@0.1.0-rc.5` |
 | Patch | `patches/dsh-subagent-admission-seam.patch` |
-| Patch SHA-256 | `f557620306ca223edad66f1890829b5e74cc618e010f26c7d06a37124ec3aa04` |
+| Patch SHA-256 | `1340a9ffabde8310f68a7d66c4dacecda5dba263dd51666740801f5ec2c69135` |
 | Protocol | `1` |
 | Canonical verification | `corepack pnpm tsx scripts/verify-seam-patch.mts` |
 

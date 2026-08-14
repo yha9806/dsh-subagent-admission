@@ -75,3 +75,20 @@ The first release publishes measurements, not an invented p95 threshold.
 Compare only reports with matching Node, platform, architecture, storage, and
 workload parameters. Machine-specific files under `evidence/` remain ignored
 and are not source-controlled proof that CI or another machine passed.
+
+## Release evidence
+
+The release-candidate collector runs the Strict-only 56-child shape, not the
+opt-in stock stress phase:
+
+```bash
+pnpm release:evidence
+pnpm release:evidence:check
+```
+
+It binds the reproduction report to the exact plugin/source identities, patch
+hash, source fingerprint, packed client bundle, crash fixtures, and promoted
+GUI screenshot in `evidence/manifest.json`. The manifest remains local and
+ignored because it includes machine-specific measurements. The producer and
+validator are tracked; a manifest from another commit or changed source tree is
+rejected as stale.

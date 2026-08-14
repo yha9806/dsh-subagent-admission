@@ -1,162 +1,198 @@
-# DSH subagent admission: novelty-and-coverage kill gate
+# DSH admission novelty and coverage gate
 
-- Observed on: 2026-08-13T19:48:43Z (UTC)
-- Method: direct primary sources only — official Git repository at its exact
-  HEAD, official npm registry metadata, the canonical public Discussion #131
-  page and the official REST API behind it, GitHub repository search, and the
-  Pi source checkout at its exact HEAD. Search absence is never treated as
-  proof of non-existence; the judgment below rests on the concrete identities
-  actually observed.
+- Gate rerun: 2026-08-14T09:39:19Z (UTC)
+- Decision: **Reframe v2 — Go, extremely narrow**
+- Method: current primary sources only—exact official and competitor Git
+  commits, official npm metadata, Discussion #131 HTML/API, and direct source
+  inspection. Search absence is not proof of non-existence.
 
-## 1. Official DSH source at the exact HEAD
+## 1. Official demand and runtime surface
+
+### Exact official identity
 
 - Repository: `https://github.com/deepseek-ai/deepseek-harness.git`
 - HEAD: `47f943859bef60e4160492346772ded9b24f765a`
-  (2026-08-13T19:38:46+08:00, "Merge pull request #2519 from
-  deepseek-harness/feat/npm-public")
-- Command: `git ls-remote https://github.com/deepseek-ai/deepseek-harness.git HEAD`
-- Source checkout: shallow clone + `git checkout 47f943859bef60e4160492346772ded9b24f765a`
-- Source package versions at that commit: root `@deepseek-ai/dsh-root`
-  `0.1.0-rc.5`; the subagent seam package `@deepseek-ai/dsh-subagent`
-  `0.1.0-rc.5` (`packages/subagent/subagent/package.json`).
+- Source `@deepseek-ai/dsh-subagent`: `0.1.0-rc.5`
+- npm `@deepseek-ai/dsh` latest/next: `0.1.0-rc.6` / `0.1.0-rc.6`
+- npm `@deepseek-ai/dsh-subagent` latest/next: `0.0.1-rc.1` /
+  `0.1.0-rc.6`
+- Baseline status: `source-npm-diverged`
 
-Lifecycle seam locations at the exact HEAD (all under
-`packages/subagent/subagent/src/`):
+`pnpm baseline:check` matched the live official source, npm, and Discussion
+identities at the gate rerun.
 
-- Provider registration: `index.ts:369` `registerProvider(provider)` — the
-  named-provider registry (`ctx.subagents`); effect-scoped, HMR-safe,
-  duplicate name rejected.
-- One-shot creation: `index.ts:414` `async start(name, request)` — capability,
-  depth, and schema checks run before delegation, then
-  `await provider.start(resolved)` materializes the child before any lifecycle
-  event exists. There is no pre-materialization veto point.
-- Continuable creation: `index.ts:212` `startContinuable(spec)` delegated to
-  `SubagentContinuationManager.startContinuable` (`continuation.ts:403`).
-- Follow-up / cold resume: `index.ts:231` `followup(...)` delegated to
-  `continuation.ts:476`; a disposed continuable child is cold-resumed by
-  replaying its persisted descriptor (`continuation.ts:999`).
-- Lifecycle events: `subagent/start` (`index.ts:157`) and `subagent/end`
-  (`index.ts:166`) are both `@mode emit`, published only after the provider
-  has already established/published the child (`observeRun`). Emit-only events
-  cannot deny a start.
-- Cleanup: `index.ts:304` `drainContinuableDescendants` delegated to
-  `continuation.ts:729` `drainDescendants`; manager-wide drain closes
-  admission synchronously (`continuation.ts:696`).
-- The only capacity-like stock limit is delegation depth: `depth.ts`
-  (`assertSubagentMaxDepth`, `delegationDepthOf`) — recursion budget, not
-  global/root breadth or concurrency. Grep for quota/admission/capacity finds
-  lifecycle wording only (for example `types.ts:282` merely advises providers
-  that "a shared capacity controller may delay an operation"; it is provider
-  guidance, not a seam).
+### Relevant lifecycle points
 
-Conclusion: stock DSH exposes no pre-materialization admission seam where an
-external plugin could veto a child start, and no global/root active caps,
-cumulative quotas, or durable admission ledger.
+At the exact source commit, all paths are under
+`packages/subagent/subagent/src/`:
 
-## 2. Discussion #131
+- `registerProvider(provider)` is an effect-scoped named-provider registry.
+- `start(name, request)` validates provider/capabilities/depth/schema and then
+  calls `provider.start(resolved)`; there is no external pre-materialisation
+  capacity veto.
+- `startContinuable(spec)` delegates to the continuation manager.
+- `followup(...)` routes to a resident activation or cold-resumes a disposed
+  continuable child from its persisted descriptor.
+- `subagent/start` and `subagent/end` are emit-only observations published
+  after lifecycle work exists; they cannot deny a start.
+- stock depth checks bound recursion depth, not breadth, global/root active
+  capacity, or cumulative child creation.
 
-- Canonical URL: `https://github.com/deepseek-ai/deepseek-harness/discussions/131`
-- REST URL: `https://api.github.com/repos/deepseek-ai/deepseek-harness/discussions/131`
-- Comments REST URL: `.../discussions/131/comments` (paginated, followed to
-  exhaustion; `per_page=100`)
-- Observed on 2026-08-13T19:48:43Z, no token used.
+Conclusion: the exact official runtime still has no versioned, external,
+pre-materialisation admission protocol and no shared capacity authority across
+its callers.
 
-| Field | Observed value |
-| --- | --- |
-| Title | 子代理无上限派生且嵌套会把整个 web 服务端拖死（56个） |
-| REST id / number | `10606879` / `131` |
-| State | `open` |
-| Total comments (REST) | `2` |
-| Fetched comment rows | `2` (cross-source count equality holds) |
-| Votes | `5` (canonical HTML button `discussion-upvote-button-Discussion-10606879`, `aria-label="Upvote: 5"`) |
-| `updated_at` | `2026-08-13T14:21:48Z` |
-| Comment authors / associations | `noone89A` `NONE` (18002907), `sah1234567` `NONE` (18002922) |
-| Maintainer comments | `0` (no `OWNER`/`MEMBER`/`COLLABORATOR` association) |
-| Discussion author / association | `noone89A` `NONE` |
+### Discussion #131
 
-The discussion remains an open user report with no maintainer reply observed.
-It is a demand anchor, not an official roadmap item or endorsement.
+- URL: `https://github.com/deepseek-ai/deepseek-harness/discussions/131`
+- State: open
+- Comments: 4 API rows
+- Upvotes: 5 in the canonical HTML baseline
+- `updated_at`: `2026-08-14T03:55:21Z`
+- Comment author associations: all four `NONE`
+- Maintainer-associated comments: 0
 
-## 3. npm and GitHub identities
+The report remains a concrete official-channel demand anchor, not a maintainer
+roadmap commitment or endorsement. It describes 56 nested spawn/fork,
+continuable, background children, high memory/CPU/session-write pressure, and
+recurrence after restart/continue.
 
-npm registry dist-tags observed 2026-08-13 (canonical `registry.npmjs.org`):
+## 2. Close precedents
 
-| Package | latest | next |
-| --- | --- | --- |
-| `@deepseek-ai/dsh` | `0.1.0-rc.6` | `0.1.0-rc.6` |
-| `@deepseek-ai/dsh-subagent` | `0.0.1-rc.1` | `0.1.0-rc.6` |
+The `dsh-plugin` topic was highly active—1,582 repository search results at the
+gate timestamp—so broad “first plugin” claims are not credible. Three current
+projects are especially relevant.
 
-The source checkout at HEAD ships the `0.1.0-rc.5` family while npm `next` is
-`0.1.0-rc.6`, so the baseline records `source-npm-diverged` instead of
-promoting one current version.
+### 2.1 `PerryLink/dsh-background-agents`
 
-Other identities used by Task 1 (all exist on npm): `@deepseek-ai/cordis`
-`4.0.1`, `@deepseek-ai/schemastery` `3.18.1`,
-`@deepseek-ai/dsh-typert-generator` `0.1.0-rc.6`, and the client inject
-packages `@deepseek-ai/dsh-api-remotes`, `@deepseek-ai/dsh-client-locale`,
-`@deepseek-ai/dsh-client-runtime`, `@deepseek-ai/dsh-client-ui-conversation`
-(all publishing `0.1.0-rc.6`).
+- Exact commit: `fdcca3dbd9ff35b618d10e2c686c3f4c79bf3313`
+- Package: `dsh-background-agents@0.3.0`
+- Product: durable interactive continuable background agents, restart recovery,
+  messaging/stop/result tools, structured projection, and native Web panel.
+- Default `maxBackgroundAgents = 4` per parent.
 
-Ecosystem scan (GitHub search API + npm search, 2026-08-13):
+What it now correctly covers:
 
-- `topic:dsh-plugin` repositories: `605` total. None of the recently updated
-  results is an admission-control kernel.
-- `dsh-web-ui` is `zhu1090093659/dsh-web-ui`, "Plugin and skin collection for
-  DeepSeek Harness (DSH) Web UI — task board, git graph, right-side panel,
-  remote mobile UI, pet, live token stats, and skin center": a GUI/skin
-  contribution, not a lifecycle admission kernel.
-- Closest subagent-adjacent plugins: `shaokeyibb/dsh-plugin-product-subagents`
-  (role-based providers with a permission ceiling — authorization, not
-  capacity admission), `jiruidai/dsh-meta-orchestrator` (model-native
-  orchestration), `HuanLinOTO/dsh-plugin-yet-another-subagent` (profile GUI),
-  `LoserFox/distill` (background subagent reflection), `dsh-subagent-tree`
-  (sidebar visualization).
-- Curated lists `AdamPlatin123/awesome-dsh-plugins` and
-  `awesome-dsh-plugin/awesome-dsh-plugin` list no lifecycle admission kernel.
-- npm search for DSH admission/subagent-concurrency plugins returns only
-  generic concurrency libraries (p-limit and similar); no DSH-specific
-  admission package was observed.
+- the `background_agent` tool counts non-archived continuable direct children
+  from `ctx.subagents.listChildren`, including children already created by the
+  built-in subagent tool;
+- a per-parent promise gate serialises that tool's
+  `count -> cap check -> startContinuable` critical section;
+- a focused test proves two concurrent calls through that same tool cannot both
+  pass a cap of one;
+- durable catalogue/projection recovery and real SubagentRuntime integration
+  are tested;
+- its GUI is useful and materially more mature than a limit-only panel.
 
-## 4. Pi comparison at an exact source commit
+This invalidates two earlier possible claims: it is a close DSH limiter
+precedent, and its current own-tool count/check path is not racy.
 
-- Repository: `https://github.com/earendil-works/pi.git`
-- HEAD: `6f707eb36064e82af9c1320a7634f4dfad21049b`
-  (2026-08-13T15:54:34+02:00, "fix(coding-agent): show managed-tool startup
-  status in TUI")
-- Closest subagent/concurrency mechanism:
-  `packages/coding-agent/examples/extensions/subagent/index.ts` — each child
-  is a fresh isolated `pi` process (process isolation by design), parallel
-  task lists are capped at `MAX_PARALLEL_TASKS = 8`, and execution runs
-  through a worker pool of `MAX_CONCURRENCY = 4`
-  (`mapWithConcurrencyLimit`, lines 219 and 640). Community `pi-subagents`
-  extensions (for example `@yzlin/pi-subagents`) add queueing and a
-  configurable concurrency flag (default 4, capped 8) at extension level.
+Remaining boundary, from exact source:
 
-Pi is an architectural comparison, not a drop-in DSH lifecycle solution: it
-has no durable root/parent quotas, no pre-materialization DSH seam, no cold-
-resume admission, and its mechanism is process-per-child concurrency limiting
-rather than in-process lifecycle ownership.
+- the promise-gate `Map` is local to `registerBackgroundAgentTools` and is
+  acquired only inside `background_agent.execute`;
+- an internal tool, another plugin, SDK caller, or direct
+  `ctx.subagents.startContinuable` call does not acquire that gate;
+- the plugin can count an already-created external continuable child on its
+  next tool invocation, but cannot atomically prevent a simultaneous external
+  start from exceeding its cap;
+- it covers non-archived continuable direct children per parent, not one-shot,
+  global/root active capacity, root/parent durable cumulative accounting, or a
+  cold-resume permit held to quiescent cleanup;
+- when the durable catalogue raises `SubagentError`, cap counting falls back to
+  this plugin's live registry and permits progress, so it is intentionally not
+  Host-wide fail-closed enforcement.
 
-## 5. Three separate judgments
+This is a product and architecture precedent to integrate with, not dismiss or
+clone.
 
-1. Already covered: stock DSH covers delegation depth accounting, a
-   named-provider lifecycle registry, post-publication emit events, and scoped
-   teardown; Pi covers process isolation plus bounded parallel pools; the
-   community covers GUIs, skins, role providers, and orchestration.
-2. Still unsolved for DSH: a pre-materialization capacity admission
-   authority — global and per-root active caps, per-root cumulative and
-   per-parent child quotas, fail-fast denials before provider work or child
-   materialization, durable ownership across restart and cold resume — plus a
-   versioned external-policy seam with conformance evidence. No official
-   implementation or close plugin observed today provides that kernel and its
-   conformance claim.
-3. This project can still differentiate on: an installable external plugin
-   with an Audit-vs-Strict mode truth, a minimal reference seam, and
-   reproducible conformance, crash, and #131 benchmark evidence — without a
-   private fork or monkey patch.
+### 2.2 `NanmiCoder/dsh-agent-teams`
 
-## 6. Go judgment
+- Exact commit: `aace29c267b798a014be030768b85f5a2fc73818`
+- Product: team creation, continuable members, task/dependency state,
+  inter-member messaging, persisted team state, and activity GUI.
+- Default `maxMembers = 8`, enforced while adding a member under the team's
+  state lock; optional member max depth.
 
-The residual demand survives the kill gate. Evidence-backed verdict: **Go**,
-restricted to the Task 1 exact baseline and installable no-op dual-face
-package skeleton.
+The member cap is a valid team-local product rule. It is not a shared Host
+capacity authority across non-team tools/providers, one-shot work, roots, or
+cold-resume lifecycle ownership.
+
+### 2.3 `FEOH333/dsh-delegate`
+
+- Exact commit: `30597c014b1c2bba8bd2d4a340ebc18949039c63`
+- Product: per-call model selection, personas, `task_id`/`depends_on` ordering,
+  durable run roster, audit events, and UI cards.
+- Explicit dependency gates are authoritative for declared dependencies; most
+  roster/tracking paths are documented as advisory and degrade rather than
+  interrupt delegation.
+
+Dependency ordering is not resource admission and provides no shared Host
+active/cumulative capacity boundary.
+
+## 3. Pi comparison
+
+The audited Pi extension architecture uses process-per-child isolation and
+bounded worker pools (parallel tasks capped at eight and concurrent workers at
+four in the inspected example). Community Pi extensions also expose local
+concurrency queues.
+
+Pi proves that bounded parallelism and process isolation are established agent
+infra patterns. It does not provide a drop-in DSH root/parent ledger, cold-
+resume ownership, or official SubagentRuntime admission seam. This project
+must not market basic concurrency limiting as novel.
+
+## 4. Three required judgments
+
+### Already covered
+
+- DSH stock: provider registration, depth accounting, continuable lifecycle,
+  persisted descriptors, post-publication events, and scoped teardown.
+- Existing DSH plugins: per-tool/per-team limits, own-tool race serialisation,
+  continuable catalogues, dependency gates, restart recovery, and mature GUIs.
+- Pi and adjacent runtimes: bounded worker pools, queues, and process isolation.
+
+### Still unsolved at the official DSH boundary
+
+- one atomic admission decision shared by built-in tools, external plugins,
+  providers, SDK/direct service callers, foreground/background paths, and
+  one-shot/continuable operations;
+- a pre-provider, pre-materialisation veto rather than post-start counting;
+- separate global/root active capacity and durable root/parent cumulative
+  quotas;
+- cold resume consuming active but not cumulative quota;
+- permit ownership retained until official quiescent cleanup;
+- exact Strict/Audit mode truth and fail-closed bootstrap;
+- a minimal protocol that lets external policy exist without a private fork or
+  tool-specific integration API.
+
+### Residual differentiation
+
+The defensible contribution is:
+
+> **DSH atomic cross-caller lifecycle admission protocol, demonstrated by one
+> external reference policy kernel.**
+
+It is not “the first DSH subagent limiter”, “a better background-agent GUI”, or
+“a full scheduler”. Existing plugins are potential protocol consumers: when
+they use ordinary `ctx.subagents` paths under Strict, they should receive the
+same Host admission automatically.
+
+## 5. Reframe v2 decision
+
+Proceed, but extremely narrowly:
+
+1. Official-facing artifact: protocol-v1 detached prepare/bind/release seam,
+   exact patch, reusable conformance fixture, and lifecycle rationale.
+2. External artifact: reference fail-fast policy with global/root active,
+   durable root/parent cumulative limits, crash truth, and read-only evidence.
+3. GUI: 20% observability and native-integration proof, not the product thesis.
+4. Communication: lead with Discussion #131 and cross-caller lifecycle
+   evidence; explicitly acknowledge current plugin precedents.
+5. Stop conditions: if official DSH adds an equivalent shared atomic seam, or a
+   plugin demonstrates unbypassable runtime-wide prepare/release ownership
+   across all named paths, rerun this gate before further investment.
+
+The user explicitly approved this Reframe v2 on 2026-08-14. It authorises local
+release-candidate implementation and verification, not push, publication,
+official submission, or a Discussion reply.

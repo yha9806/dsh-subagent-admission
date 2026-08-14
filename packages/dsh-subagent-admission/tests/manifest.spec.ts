@@ -41,6 +41,10 @@ describe('dsh-subagent-admission package manifest', () => {
   it('allowlists only the generated artifact faces', () => {
     const manifest = readJson('packages/dsh-subagent-admission/package.json')
     expect(manifest.files).toEqual([
+      'README.md',
+      'README.zh-CN.md',
+      'LICENSE',
+      'THIRD_PARTY_NOTICES.md',
       'lib/index.js',
       'lib/invariant.js',
       'lib/client.js',

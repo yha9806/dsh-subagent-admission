@@ -28,15 +28,35 @@ function fail(message: string): never {
   throw new Error(`crash fixture: ${message}`)
 }
 
-function parseBackend(argv: readonly string[]): Backend {
-  if (
-    argv.length !== 2 ||
-    argv[0] !== '--backend' ||
-    (argv[1] !== 'json' && argv[1] !== 'sqlite')
-  ) {
-    fail('usage: crash-fixture.mts --backend json|sqlite')
+interface CliOptions {
+  readonly backend: Backend
+  readonly output?: string
+}
+
+function parseCli(argv: readonly string[]): CliOptions {
+  let backend: Backend | undefined
+  let output: string | undefined
+  for (let index = 0; index < argv.length; index += 1) {
+    const argument = argv[index]
+    if (argument === '--backend' && backend === undefined) {
+      const value = argv[++index]
+      if (value !== 'json' && value !== 'sqlite') {
+        fail('--backend must be json or sqlite')
+      }
+      backend = value
+    } else if (argument === '--output' && output === undefined) {
+      output = argv[++index]
+      if (output === undefined || output.length === 0) {
+        fail('--output needs a path')
+      }
+    } else {
+      fail('usage: crash-fixture.mts --backend json|sqlite [--output <path>]')
+    }
   }
-  return argv[1]
+  if (backend === undefined) {
+    fail('usage: crash-fixture.mts --backend json|sqlite [--output <path>]')
+  }
+  return output === undefined ? { backend } : { backend, output }
 }
 
 function materialize(): void {
@@ -190,7 +210,8 @@ function validateEvidence(path: string, backend: Backend): Record<string, unknow
   return document
 }
 
-const backend = parseBackend(process.argv.slice(2))
+const cli = parseCli(process.argv.slice(2))
+const backend = cli.backend
 const root = mkdtempSync(join(tmpdir(), `dsh-crash-${backend}-`))
 const evidencePath = join(root, `crash-${backend}.json`)
 
@@ -207,8 +228,14 @@ try {
     evidenceDir: root,
     node: process.version,
   }
-  writeFileSync(evidencePath, `${JSON.stringify(result, null, 2)}\n`)
-  console.log(JSON.stringify(result, null, 2))
+  const rendered = `${JSON.stringify(result, null, 2)}\n`
+  writeFileSync(evidencePath, rendered)
+  if (cli.output !== undefined) {
+    const outputPath = resolve(cli.output)
+    mkdirSync(dirname(outputPath), { recursive: true })
+    writeFileSync(outputPath, rendered)
+  }
+  process.stdout.write(rendered)
 } catch (error: unknown) {
   console.error(error instanceof Error ? error.message : String(error))
   console.error(`crash evidence directory: ${root}`)

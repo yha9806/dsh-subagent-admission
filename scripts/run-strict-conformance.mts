@@ -66,6 +66,25 @@ interface CommandResult {
   readonly stderr: string
 }
 
+interface CliOptions {
+  readonly output?: string
+}
+
+function parseCli(argv: readonly string[]): CliOptions {
+  let output: string | undefined
+  for (let index = 0; index < argv.length; index += 1) {
+    const argument = argv[index]
+    if (argument !== '--output' || output !== undefined) {
+      fail('usage: run-strict-conformance.mts [--output <path>]')
+    }
+    output = argv[++index]
+    if (output === undefined || output.length === 0) {
+      fail('--output needs a path')
+    }
+  }
+  return output === undefined ? {} : { output }
+}
+
 function fail(message: string): never {
   throw new Error(`strict conformance: ${message}`)
 }
@@ -255,6 +274,7 @@ function validateStock(path: string): void {
 let checkout = ''
 let disposable = ''
 let evidenceDir = ''
+const cli = parseCli(process.argv.slice(2))
 
 try {
   const baseline = parseBaseline()
@@ -379,7 +399,7 @@ try {
   )
   const rows = validateStrict(join(evidenceDir, 'strict-runtime.json'))
 
-  console.log(JSON.stringify({
+  const summary = {
     schemaVersion: 1,
     status: 'pass',
     sourceCommit: baseline.source.commit,
@@ -390,7 +410,14 @@ try {
     evidenceDir,
     node: process.version,
     pnpm: quiet(pnpm, ['--version'], WORKSPACE_ROOT),
-  }, null, 2))
+  }
+  const rendered = `${JSON.stringify(summary, null, 2)}\n`
+  if (cli.output !== undefined) {
+    const outputPath = resolve(cli.output)
+    mkdirSync(dirname(outputPath), { recursive: true })
+    writeFileSync(outputPath, rendered)
+  }
+  process.stdout.write(rendered)
 } catch (error: unknown) {
   console.error(error instanceof Error ? error.message : String(error))
   if (evidenceDir.length > 0) console.error(`evidence directory: ${evidenceDir}`)

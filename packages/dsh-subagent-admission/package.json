@@ -1,7 +1,7 @@
 {
   "name": "dsh-subagent-admission",
   "version": "0.1.0-rc.1",
-  "description": "Lifecycle-safe admission control for DSH subagents.",
+  "description": "Shared lifecycle admission protocol and reference policy kernel for DSH subagents.",
   "license": "MIT",
   "type": "module",
   "main": "lib/index.js",
@@ -34,6 +34,10 @@
     "./package.json": "./package.json"
   },
   "files": [
+    "README.md",
+    "README.zh-CN.md",
+    "LICENSE",
+    "THIRD_PARTY_NOTICES.md",
     "lib/index.js",
     "lib/invariant.js",
     "lib/client.js",
@@ -44,6 +48,14 @@
     "lib/typert.remote-client.js",
     "lib/typert.remote-client.d.ts",
     "cordis.patch.yml"
+  ],
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "subagent",
+    "admission-control",
+    "agent-infrastructure"
   ],
   "dsh": {
     "bundle": {
