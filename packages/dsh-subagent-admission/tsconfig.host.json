@@ -1,13 +1,20 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
+    "lib": ["ES2022", "DOM"],
     "rootDir": "src",
     "outDir": "lib/types",
-    "tsBuildInfoFile": "lib/tsconfig.host.tsbuildinfo"
+    "tsBuildInfoFile": "lib/tsconfig.host.tsbuildinfo",
+    "paths": {
+      "@deepseek-ai/dsh-typert-protocol": [
+        "./src/host/typert-protocol-bridge.d.ts"
+      ]
+    }
   },
-  "files": [
+  "include": [
     "src/index.ts",
     "src/invariant.ts",
-    "src/types.ts"
+    "src/types.ts",
+    "src/host/**/*.ts"
   ]
 }

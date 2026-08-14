@@ -27,6 +27,14 @@ describe('dsh-subagent-admission package manifest', () => {
     })
     expect(manifest.exports).toHaveProperty('./client')
     expect(manifest.exports).toHaveProperty('./types')
+    expect(manifest.exports).toHaveProperty('./typert', {
+      types: './lib/typert.host.d.ts',
+      default: './lib/typert.host.js',
+    })
+    expect(manifest.exports).toHaveProperty('./remote', {
+      types: './lib/typert.remote-client.d.ts',
+      default: './lib/typert.remote-client.js',
+    })
   })
 
   it('allowlists only the generated artifact faces', () => {
@@ -37,8 +45,46 @@ describe('dsh-subagent-admission package manifest', () => {
       'lib/client.js',
       'lib/types/**/*.js',
       'lib/types/**/*.d.ts',
+      'lib/typert.host.js',
+      'lib/typert.host.d.ts',
+      'lib/typert.remote-client.js',
+      'lib/typert.remote-client.d.ts',
       'cordis.patch.yml',
     ])
+  })
+
+  it('generates an exactly read-only Snapshot Remote surface', () => {
+    const remoteJs = readFileSync(
+      resolve(
+        workspaceRoot,
+        'packages/dsh-subagent-admission/lib/typert.remote-client.js',
+      ),
+      'utf8',
+    )
+    const remoteTypes = readFileSync(
+      resolve(
+        workspaceRoot,
+        'packages/dsh-subagent-admission/lib/typert.remote-client.d.ts',
+      ),
+      'utf8',
+    )
+    const descriptorIds = [...remoteJs.matchAll(/\bid: '([^']+)'/g)]
+      .map((match) => match[1])
+    const methods = [...remoteJs.matchAll(/\bmethod: '([^']+)'/g)]
+      .map((match) => match[1])
+
+    expect(descriptorIds).toEqual([
+      'dsh-subagent-admission#snapshot/get',
+      'dsh-subagent-admission#snapshot/watch',
+    ])
+    expect(methods).toEqual(['get', 'watch'])
+    expect(
+      methods.filter((method) =>
+        ['set', 'reset', 'release', 'kill', 'retry'].includes(method),
+      ),
+    ).toEqual([])
+    expect(remoteTypes).toContain("'snapshot/get'")
+    expect(remoteTypes).toContain("'snapshot/watch'")
   })
 
   it('carries exactly one bundle patch row with audit defaults', () => {

@@ -1,8 +1,10 @@
-import type { AdmissionMode } from '../types.js'
+import s from '@deepseek-ai/schemastery'
+
+import type { ConfiguredAdmissionMode } from './compatibility.js'
 
 /** Flat startup configuration for the admission policy. */
 export interface Config {
-  readonly mode: AdmissionMode
+  readonly mode: ConfiguredAdmissionMode
   readonly globalActive: number
   readonly perRootActive: number
   readonly perRootAdmittedTotal: number
@@ -12,7 +14,7 @@ export interface Config {
 
 /** Partial user-supplied configuration; missing fields inherit the defaults. */
 export interface ConfigInput {
-  mode?: AdmissionMode
+  mode?: ConfiguredAdmissionMode
   globalActive?: number
   perRootActive?: number
   perRootAdmittedTotal?: number
@@ -35,6 +37,18 @@ export const DEFAULT_CONFIG: Config = {
   ownershipPath: 'sessions/.dsh-subagent-admission-owner',
 }
 
+/** Cordis loader schema. Cross-field constraints remain in resolveConfig. */
+export const Config = s.object({
+  mode: s.union([s.const('strict'), s.const('audit')]).default('audit'),
+  globalActive: s.number().step(1).min(1).default(6),
+  perRootActive: s.number().step(1).min(1).default(4),
+  perRootAdmittedTotal: s.number().step(1).min(1).default(24),
+  perParentChildren: s.number().step(1).min(1).default(8),
+  ownershipPath: s.string().default(
+    'sessions/.dsh-subagent-admission-owner',
+  ),
+}) as s<ConfigInput, Config>
+
 /**
  * Resolves configuration against the defaults and rejects incoherent limits.
  *
@@ -54,6 +68,9 @@ export function resolveConfig(input: ConfigInput = {}): Config {
       input.perParentChildren ?? DEFAULT_CONFIG.perParentChildren,
     ownershipPath: input.ownershipPath ?? DEFAULT_CONFIG.ownershipPath,
   }
+  if (config.mode !== 'strict' && config.mode !== 'audit') {
+    throw new Error('mode must be strict or audit')
+  }
   assertPositiveSafeInteger(config.globalActive, 'globalActive')
   assertPositiveSafeInteger(config.perRootActive, 'perRootActive')
   assertPositiveSafeInteger(config.perRootAdmittedTotal, 'perRootAdmittedTotal')
@@ -67,7 +84,10 @@ export function resolveConfig(input: ConfigInput = {}): Config {
   if (config.perParentChildren > config.perRootAdmittedTotal) {
     throw new Error('perParentChildren must not exceed perRootAdmittedTotal')
   }
-  return config
+  if (config.ownershipPath.length === 0) {
+    throw new Error('ownershipPath must not be empty')
+  }
+  return Object.freeze(config)
 }
 
 function assertPositiveSafeInteger(value: number, name: string): void {
