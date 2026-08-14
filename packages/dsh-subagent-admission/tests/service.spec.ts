@@ -614,25 +614,31 @@ describe('SubagentAdmissionService teardown', () => {
       },
     })
 
-    const permit = await authority.prepare({
-      requestId: 'request-1',
-      operation: 'new-one-shot',
-      provider: 'fake',
-      parentSessionId: 'parent',
-    })
-    const disposing = service.dispose()
-
-    await expect(
-      authority.prepare({
-        requestId: 'request-2',
+    const permit = await authority.acquire(
+      {
+        requestId: 'request-1',
         operation: 'new-one-shot',
         provider: 'fake',
         parentSessionId: 'parent',
-      }),
+      },
+      new AbortController().signal,
+    )
+    const disposing = service.dispose()
+
+    await expect(
+      authority.acquire(
+        {
+          requestId: 'request-2',
+          operation: 'new-one-shot',
+          provider: 'fake',
+          parentSessionId: 'parent',
+        },
+        new AbortController().signal,
+      ),
     ).rejects.toMatchObject({ code: 'ADMISSION_CLOSED' })
     expect(order).toEqual(['unregister-policy'])
 
-    await permit.release('disposed')
+    await permit.release('quiescent')
     await disposing
     expect(order).toEqual([
       'unregister-policy',

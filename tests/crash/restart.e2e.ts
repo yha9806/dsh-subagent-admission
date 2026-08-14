@@ -81,12 +81,17 @@ describe('post-ledger-commit restart', () => {
         clock: { now: (): number => 2 },
       })
 
-      await expect(authority.prepare({
-        requestId: `restart-request-${selected}`,
-        operation: 'new-one-shot',
-        provider: 'crash-fixture',
-        parentSessionId: 'root',
-      })).rejects.toMatchObject({
+      await expect(
+        authority.acquire(
+          {
+            requestId: `restart-request-${selected}`,
+            operation: 'new-one-shot',
+            provider: 'crash-fixture',
+            parentSessionId: 'root',
+          },
+          new AbortController().signal,
+        ),
+      ).rejects.toMatchObject({
         code: 'ROOT_TOTAL_LIMIT',
         observedValue: 1,
         limit: 1,

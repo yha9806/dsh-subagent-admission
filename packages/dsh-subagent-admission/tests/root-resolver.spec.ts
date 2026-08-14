@@ -10,7 +10,7 @@ interface FakeHeader {
 function makeReader(headers: Record<string, FakeHeader>) {
   return {
     inspect: vi.fn(
-      async (sessionId: string): Promise<FakeHeader | undefined> => {
+      async (sessionId: string, _signal?: AbortSignal): Promise<FakeHeader | undefined> => {
         const header = headers[sessionId]
         return header ? { ...header } : undefined
       },
@@ -195,6 +195,70 @@ describe('DurableRootResolver.resolve', () => {
     expect(again).toEqual({ rootSessionId: 'root', lineage: ['child', 'root'] })
   })
 
+  it('rejects a cached lineage when signal is pre-aborted and performs no inspect', async () => {
+    const { resolver, reader } = resolverFor({
+      root: { id: 'root' },
+      child: { id: 'child', parentSession: 'root' },
+    })
+    await expect(resolver.resolve('child')).resolves.toEqual({
+      rootSessionId: 'root',
+      lineage: ['child', 'root'],
+    })
+    const callsAfterFirst = reader.inspect.mock.calls.length
+    expect(callsAfterFirst).toBe(2)
+
+    const controller = new AbortController()
+    controller.abort()
+
+    await expect(
+      resolver.resolve('child', controller.signal),
+    ).rejects.toThrow()
+    expect(reader.inspect.mock.calls.length).toBe(callsAfterFirst)
+  })
+
+  it('rejects an in-flight inspect on abort and allows a later fresh resolve to inspect again', async () => {
+    let blocked = true
+    let unblock: () => void = () => {}
+    const reader = {
+      inspect: vi.fn(async (sessionId: string, signal?: AbortSignal) => {
+        if (sessionId === 'child' && blocked) {
+          await new Promise<void>((resolve) => {
+            unblock = resolve
+          })
+        }
+        signal?.throwIfAborted()
+        return sessionId === 'root'
+          ? { id: 'root' }
+          : { id: 'child', parentSession: 'root' }
+      }),
+    } satisfies SessionHeaderReader
+
+    const resolver = new DurableRootResolver(reader)
+    const controller = new AbortController()
+
+    const resolving = resolver.resolve('child', controller.signal)
+    controller.abort()
+    blocked = false
+    unblock()
+
+    await expect(resolving).rejects.toThrow()
+
+    const freshLineage = await resolver.resolve('child')
+    expect(freshLineage).toEqual({
+      rootSessionId: 'root',
+      lineage: ['child', 'root'],
+    })
+  })
+
+  it('passes the exact AbortSignal to the header reader', async () => {
+    const { resolver, reader } = resolverFor({
+      root: { id: 'root' },
+    })
+    const controller = new AbortController()
+    await resolver.resolve('root', controller.signal)
+    expect(reader.inspect).toHaveBeenCalledWith('root', controller.signal)
+  })
+
   it('exposes only operational ids and code on resolve failures', async () => {
     const { resolver } = resolverFor({
       child: { id: 'child', parentSession: 'ghost', origin: 'subagent' },
@@ -314,6 +378,6 @@ describe('DurableRootResolver.bindChild', () => {
     await expect(resolver.resolve('run-remote-1')).rejects.toMatchObject({
       code: 'ADMISSION_UNAVAILABLE',
     })
-    expect(reader.inspect).toHaveBeenCalledWith('run-remote-1')
+    expect(reader.inspect).toHaveBeenCalledWith('run-remote-1', undefined)
   })
 })

@@ -1,0 +1,448 @@
+diff --git a/packages/subagent/subagent/src/continuation.ts b/packages/subagent/subagent/src/continuation.ts
+index d826efb..9d132e9 100644
+--- a/packages/subagent/subagent/src/continuation.ts
++++ b/packages/subagent/subagent/src/continuation.ts
+@@ -50,6 +50,7 @@ import type { DelegatedPolicyOverrides } from './child-agent.ts'
+ import { assertSubagentMaxDepth } from './depth.ts'
+ import { seedDescriptorTurn } from './descriptor-seed.ts'
+ import type { ContinuableCreateRequest, ContinuableCreateSpec, SubagentResult, SubagentStartRequest } from './types.ts'
++import type { SubagentAdmissionPermitV1, SubagentAdmissionRequestV1 } from './types.ts'
+ import type { ActivationObserver, ActivationTerminal } from './lifecycle.ts'
+ import { SubagentError } from './error.ts'
+ import type SubagentActivationSetupRegistry from './activation-setup-registry.ts'
+@@ -165,6 +166,10 @@ type ActivationState = 'running' | 'waiting' | 'settled'
+  * consumer outside this package supplies a host.
+  */
+ interface ContinuationHost {
++  /** Validate provider presence/capability without starting provider work. */
++  assertContinuableProvider(name: string): void
++  /** Optionally acquire one detached protocol-v1 permit before materialization. */
++  acquireAdmission(request: Omit<SubagentAdmissionRequestV1, 'requestId'>, signal: AbortSignal): Promise<SubagentAdmissionPermitV1> | undefined
+   /**
+    * Resolve one provider's continuable-creation contribution, or reject when
+    * the provider is unknown or lacks the capability.
+@@ -216,6 +221,8 @@ interface Activation {
+   readonly ownedChildren: Set<SessionId>
+   /** The lifecycle observer that emits this epoch's start and terminal edges. */
+   readonly observer: ActivationObserver
++  /** Optional external capacity ownership retained for this whole residency epoch. */
++  readonly admissionPermit: SubagentAdmissionPermitV1 | undefined
+   /**
+    * The memoized disposal transaction. Presence IS the admission cutoff: it is
+    * assigned synchronously when disposal begins, so no delivery can join a
+@@ -257,6 +264,8 @@ interface MaterializeInputs {
+   }
+   agentOptions: AgentOptions
+   composition: { persona?: string | undefined; toolFilter?: ToolRestriction | undefined }
++  /** Permit acquired before provider or Agent work; transferred on publication. */
++  admissionPermit: SubagentAdmissionPermitV1 | undefined
+   signal: AbortSignal
+ }
+ 
+@@ -281,6 +290,15 @@ function disposalOf(activation: Activation): Promise<void> | undefined {
+   return activation.disposal
+ }
+ 
++async function rejectAfterAdmissionRelease(failure: unknown, permit: SubagentAdmissionPermitV1): Promise<never> {
++  try {
++    await permit.release('startup-failed')
++  } catch (releaseFailure: unknown) {
++    throw new AggregateError([failure, releaseFailure], 'continuable startup and admission release both failed')
++  }
++  throw failure
++}
++
+ /**
+  * One line telling a parent that a background child is finished and why, in
+  * the parent's own task vocabulary.
+@@ -424,7 +442,18 @@ export class SubagentContinuationManager {
+     // Capture before the first await: a later parent switch belongs to the
+     // parent's future, not to this child.
+     const delegatedPolicies = captureDelegatedPolicyOverrides(parent)
++    this.host.assertContinuableProvider(spec.provider)
++    const acquiring = this.host.acquireAdmission({
++      operation: 'new-continuable',
++      provider: spec.provider,
++      parentSessionId: parent.id,
++      childSessionId: childId,
++    }, spec.signal)
++    const permit = acquiring === undefined ? undefined : await acquiring
++    let materializeOwnsPermit = false
+ 
++    try {
++      spec.signal.throwIfAborted()
+     const prepared = await this.host.prepareContinuable(spec.provider, {
+       sessionId: childId,
+       parent,
+@@ -436,6 +465,7 @@ export class SubagentContinuationManager {
+     const lineageSeedLength = prepared.seed?.length ?? 0
+     const seed = seedDescriptorTurn(childId, prepared.seed, descriptor)
+     const messageId = await this.locks.run(childId, async () => {
++      materializeOwnsPermit = true
+       const activation = await this.materialize({
+         childId,
+         provider: spec.provider,
+@@ -443,6 +473,7 @@ export class SubagentContinuationManager {
+         create: { seed, meta: childSessionMeta(parent, childDepth, lineageSeedLength), delegatedPolicies },
+         agentOptions: resolveChildAgentOptions(parent, request.agentOptions, childDepth),
+         composition: { persona: request.persona, toolFilter: request.toolFilter },
++        admissionPermit: permit,
+         signal: spec.signal,
+       })
+       return this.submitMaterialized(
+@@ -454,6 +485,12 @@ export class SubagentContinuationManager {
+       )
+     })
+     return { childId, messageId }
++    } catch (error: unknown) {
++      if (permit !== undefined && !materializeOwnsPermit) {
++        return rejectAfterAdmissionRelease(error, permit)
++      }
++      throw error
++    }
+   }
+ 
+   /**
+@@ -910,6 +947,15 @@ export class SubagentContinuationManager {
+         'NOT_RESUMABLE',
+       )
+     }
++    const acquiring = this.host.acquireAdmission({
++      operation: 'cold-resume',
++      provider: descriptor.provider,
++      parentSessionId: parent.id,
++      childSessionId: childId,
++    }, options.signal)
++    const permit = acquiring === undefined ? undefined : await acquiring
++    options.signal.throwIfAborted()
++
+     let activation: Activation
+     try {
+       activation = await this.materialize({
+@@ -921,9 +967,11 @@ export class SubagentContinuationManager {
+           ...descriptor.agentModel !== undefined ? { model: descriptor.agentModel } : {},
+         },
+         composition: { persona: descriptor.persona, toolFilter: descriptor.toolFilter },
++        admissionPermit: permit,
+         signal: options.signal,
+       })
+     } catch (error: unknown) {
++      if (error instanceof AggregateError) throw error
+       options.signal.throwIfAborted()
+       if (error instanceof SubagentError) throw error
+       throw new SubagentError(`subagent "${childId}" is unavailable`, 'NOT_RESUMABLE', { cause: error })
+@@ -948,11 +996,13 @@ export class SubagentContinuationManager {
+     signal: AbortSignal,
+   ): Promise<MessageId> {
+     try {
+-      return this.submitAdmitted(activation, content, source, parent, signal)
++      return await this.submitAdmitted(activation, content, source, parent, signal)
+     } catch (error: unknown) {
+-      /* v8 ignore next -- rollback disposal failures must not mask the
+-       * pre-acceptance signal, drain, or lifecycle failure. */
+-      await this.dispose(activation).catch(() => undefined)
++      try {
++        await this.dispose(activation)
++      } catch (cleanupFailure: unknown) {
++        throw new AggregateError([error, cleanupFailure], 'continuable submission and rollback both failed')
++      }
+       throw error
+     }
+   }
+@@ -987,7 +1037,7 @@ export class SubagentContinuationManager {
+     inputs: MaterializeInputs,
+     parentLineage: readonly Agent[],
+   ): Promise<Activation> {
+-    const { childId, provider, parent, create } = inputs
++    const { admissionPermit, childId, provider, parent, create } = inputs
+     // No id pre-check here: the child lock serializes each durable child, both
+     // callers reach this only after confirming no Activation exists, and
+     // `AgentRegistry.enter()` is the authoritative collision boundary for an id
+@@ -1006,7 +1056,9 @@ export class SubagentContinuationManager {
+     const observer = this.host.observeActivation(provider, childId, parent)
+     // Agent creation owns rollback before handle transfer. A rejection leaves
+     // no resident Activation and therefore publishes no lifecycle edge.
+-    const handle: AgentHandle = create === undefined
++    let handle: AgentHandle
++    try {
++      handle = create === undefined
+       ? await this.ownerCtx.agents.resume({
+         resumeSessionId: childId,
+         agentOptions: inputs.agentOptions,
+@@ -1021,6 +1073,12 @@ export class SubagentContinuationManager {
+         signal: inputs.signal,
+         setup,
+       })
++    } catch (error: unknown) {
++      if (admissionPermit !== undefined) {
++        return rejectAfterAdmissionRelease(error, admissionPermit)
++      }
++      throw error
++    }
+ 
+     const activation: Activation = {
+       childId,
+@@ -1033,6 +1091,7 @@ export class SubagentContinuationManager {
+       ancestry: new WeakSet([handle.agent, ...parentLineage]),
+       ownedChildren: new Set(),
+       observer,
++      admissionPermit,
+       disposal: undefined,
+       accepted: new Set(),
+       announced: false,
+@@ -1042,6 +1101,8 @@ export class SubagentContinuationManager {
+     // Activation, and roll back parent ownership before rejecting.
+     this.activations.set(childId, activation)
+     try {
++      const localParentSessionId = handle.agent.session.header.parentSession
++      admissionPermit?.bindChild({ childSessionId: childId, ...localParentSessionId !== undefined && { localParentSessionId } })
+       inputs.signal.throwIfAborted()
+       this.assertAdmitting(parent)
+       this.acquireOwnership(parent, childId)
+@@ -1064,30 +1125,31 @@ export class SubagentContinuationManager {
+       // epoch before its first request.
+       observer.start(handle.agent)
+     } catch (error: unknown) {
+-      // Listener exceptions are contained by the lifecycle emitter; a start
+-      // publication throw therefore leaves no residency edge to pair.
+-      /* v8 ignore next -- rollback failure must not mask the admission failure
+-       * that prevented this operation from returning an accepted message id. */
+-      await this.rollbackUnpublished(activation).catch(() => undefined)
++      try {
++        await this.rollbackUnpublished(activation)
++      } catch (rollbackFailure: unknown) {
++        throw new AggregateError([error, rollbackFailure], 'continuable startup and rollback both failed')
++      }
+       throw error
+     }
+     this.watchSettlement(activation)
+     return activation
+   }
+ 
+-  /**
+-   * Release an Activation whose start edge was not published. The memoized
+-   * transaction remains in the live map until handle disposal settles, so a
+-   * concurrent drain or delivery observes the same closing boundary.
+-   */
++  /** Release an unpublished Activation and its admission permit after quiescence. */
+   private rollbackUnpublished(activation: Activation): Promise<void> {
+     return (activation.disposal ??= (async () => {
++      let quiescent = false
+       try {
+         await activation.handle.dispose()
++        quiescent = true
+       } finally {
+         this.activations.delete(activation.childId)
+         this.releaseOwnership(activation.childId)
+       }
++      if (quiescent) {
++        await activation.admissionPermit?.release('startup-failed')
++      }
+     })())
+   }
+ 
+@@ -1364,6 +1426,13 @@ export class SubagentContinuationManager {
+     // makes a racing delivery wait for release rather than cold-resume into the
+     // still-registered agent.
+     this.activations.delete(childId)
++    if (activation.admissionPermit !== undefined && failure === undefined) {
++      try {
++        await activation.admissionPermit.release(activation.announced ? 'quiescent' : 'startup-failed')
++      } catch (error: unknown) {
++        failure = new SubagentError(`subagent "${childId}" admission permit release failed: ${errorChain(error)}`, 'ACTIVATION_TEARDOWN_FAILED', { cause: error })
++      }
++    }
+     // BEFORE releasing ownership, while the parent still counts this child and
+     // therefore cannot be judged settled. Delivering after the release would
+     // race a parent watcher that resumes one microtask later, finds itself
+diff --git a/packages/subagent/subagent/src/index.ts b/packages/subagent/subagent/src/index.ts
+index fe270f1..966480a 100644
+--- a/packages/subagent/subagent/src/index.ts
++++ b/packages/subagent/subagent/src/index.ts
+@@ -49,6 +49,8 @@ import type {
+   SubagentRunInfo,
+   SubagentStartRequest,
+ } from './types.ts'
++import { randomUUID } from 'node:crypto'
++import type { SubagentAdmissionPermitV1, SubagentAdmissionPolicyV1, SubagentAdmissionRequestV1 } from './types.ts'
+ import { SubagentError } from './error.ts'
+ import { assertSubagentMaxDepth } from './depth.ts'
+ import { createActivationObserver, createLifecycleEmitter, observeRun } from './lifecycle.ts'
+@@ -83,6 +85,7 @@ export type {
+   SubagentStopReason,
+   SubagentStopReasonMap,
+ } from './types.ts'
++export type { SubagentAdmissionChildBindingV1, SubagentAdmissionOperationV1, SubagentAdmissionPermitV1, SubagentAdmissionPolicyV1, SubagentAdmissionReleaseReasonV1, SubagentAdmissionRequestV1 } from './types.ts'
+ export {
+   foldSubagentDescriptor,
+   snapshotSubagentDescriptor,
+@@ -167,9 +170,36 @@ declare module '@deepseek-ai/cordis' {
+   }
+ }
+ 
++async function rejectAfterPermitRelease(failure: unknown, permit: SubagentAdmissionPermitV1): Promise<never> {
++  try {
++    await permit.release('startup-failed')
++  } catch (releaseFailure: unknown) {
++    throw new AggregateError([failure, releaseFailure], 'subagent startup and admission release both failed')
++  }
++  throw failure
++}
++
++async function rejectAfterRunRollback(failure: unknown, run: SubagentRun, permit: SubagentAdmissionPermitV1): Promise<never> {
++  void run.result.catch(() => undefined)
++  try {
++    await run.dispose()
++  } catch (cleanupFailure: unknown) {
++    throw new AggregateError([failure, cleanupFailure], 'subagent child binding and publication rollback both failed')
++  }
++  return rejectAfterPermitRelease(failure, permit)
++}
++
++function holdPermit(run: SubagentRun, permit: SubagentAdmissionPermitV1): SubagentRun {
++  let disposal: Promise<void> | undefined
++  return { ...run, dispose: () => (disposal ??= (async () => { await run.dispose(); await permit.release('quiescent') })()) }
++}
++
+ /** Named provider registry with one-shot runs, durable discovery, and continuable-child operations. */
+ export class SubagentRuntime extends Service {
++  readonly admissionProtocolVersion = 1 as const
++
+   private providers = new Map<string, SubagentProvider>()
++  private admissionPolicy: SubagentAdmissionPolicyV1 | null | undefined
+   private continuations: SubagentContinuationManager | undefined
+   /** Deployment contributions composed into unpublished continuable children. */
+   private readonly setupRegistry = new SubagentActivationSetupRegistry()
+@@ -185,6 +215,8 @@ export class SubagentRuntime extends Service {
+     this.emitLifecycle = createLifecycleEmitter(this.ctx, parent => scopeTarget(this, parent))
+     ctx.inject(['agents'], (childCtx: Context) => {
+       const manager = new SubagentContinuationManager(childCtx, {
++        assertContinuableProvider: name => this.expectContinuableProvider(name),
++        acquireAdmission: (request, signal) => this.acquireAdmission(request, signal),
+         prepareContinuable: (name, request) => this.prepareContinuable(name, request),
+         observeActivation: (provider, childId, parent) => this.observeActivation(provider, childId, parent),
+       }, this.setupRegistry)
+@@ -401,6 +433,24 @@ export class SubagentRuntime extends Service {
+     return [...this.providers.keys()]
+   }
+ 
++  /**
++   * Register the process's sole protocol-v1 admission authority. Unregistering
++   * synchronously tombstones new access; permits already returned remain owned
++   * by their runs or Activations until canonical cleanup releases them.
++   */
++  registerAdmissionPolicy(policy: SubagentAdmissionPolicyV1): () => void {
++    // oxlint-disable-next-line typescript/no-misused-promises -- synchronous cleanup; direct return preserves disposer identity
++    return this.ctx.effect(function* (this: SubagentRuntime) {
++      if (this.admissionPolicy !== undefined) throw new SubagentError('a subagent admission policy is already registered', 'DUPLICATE_ADMISSION_POLICY')
++      const candidate = policy as unknown as Record<string, unknown>
++      if (candidate.protocolVersion !== 1 || typeof candidate.acquire !== 'function') {
++        throw new SubagentError(`unsupported subagent admission protocol ${String(candidate.protocolVersion)}`, 'UNSUPPORTED_ADMISSION_PROTOCOL')
++      }
++      this.admissionPolicy = policy
++      yield () => { if (this.admissionPolicy === policy) this.admissionPolicy = null }
++    }.bind(this), 'subagents.registerAdmissionPolicy()')
++  }
++
+   /**
+    * Establish a published child on the named provider. Capability and semantic
+    * checks run before delegation. Provider ownership lasts until its promise
+@@ -422,7 +472,31 @@ export class SubagentRuntime extends Service {
+       ...request.label !== undefined ? { label: request.label } : {},
+     })
+     const resolved: ResolvedSubagentStartRequest = { ...request, descriptor }
+-    return observeRun(this.emitLifecycle, name, request.parent, await provider.start(resolved))
++
++    const acquiring = this.acquireAdmission({
++      operation: 'new-one-shot',
++      provider: name,
++      parentSessionId: request.parent.id,
++    }, request.signal)
++
++    if (acquiring === undefined) {
++      return observeRun(this.emitLifecycle, name, request.parent, await provider.start(resolved))
++    }
++
++    const permit = await acquiring
++    let run: SubagentRun | undefined
++    try {
++      request.signal.throwIfAborted()
++      run = await provider.start(resolved)
++      request.signal.throwIfAborted()
++      const localParentSessionId = run.localAgent?.session.header.parentSession
++      permit.bindChild({ childSessionId: run.id, ...localParentSessionId !== undefined && { localParentSessionId } })
++      request.signal.throwIfAborted()
++    } catch (error: unknown) {
++      return run === undefined ? rejectAfterPermitRelease(error, permit) : rejectAfterRunRollback(error, run, permit)
++    }
++
++    return observeRun(this.emitLifecycle, name, request.parent, holdPermit(run, permit))
+   }
+ 
+   /**
+@@ -434,15 +508,24 @@ export class SubagentRuntime extends Service {
+     name: string,
+     request: ContinuableCreateRequest,
+   ): Promise<ContinuableCreateSpec> {
++    return this.expectContinuableProvider(name).prepareContinuable(request)
++  }
++
++  /** Validate continuable capability without invoking provider preparation. */
++  private expectContinuableProvider(name: string): SubagentProvider & Required<Pick<SubagentProvider, 'prepareContinuable'>> {
+     const provider = this.expectProvider(name)
+     if (provider.prepareContinuable === undefined) {
+-      throw new SubagentError(
+-        `subagent provider "${provider.name}" does not support continuable children `
+-        + '(no prepareContinuable capability)',
+-        'UNSUPPORTED_CAPABILITY',
+-      )
++      throw new SubagentError(`subagent provider "${provider.name}" does not support continuable children (no prepareContinuable capability)`, 'UNSUPPORTED_CAPABILITY')
+     }
+-    return provider.prepareContinuable(request)
++    return provider as SubagentProvider & Required<Pick<SubagentProvider, 'prepareContinuable'>>
++  }
++
++  private acquireAdmission(request: Omit<SubagentAdmissionRequestV1, 'requestId'>, signal: AbortSignal): Promise<SubagentAdmissionPermitV1> | undefined {
++    const policy = this.admissionPolicy
++    if (policy === undefined) return undefined
++    signal.throwIfAborted()
++    if (policy === null) throw new SubagentError('subagent admission policy is closed; restart the runtime', 'ADMISSION_CLOSED')
++    return policy.acquire(Object.freeze({ requestId: randomUUID(), ...request }), signal)
+   }
+ 
+   /** Look up a provider for dispatch or fail loud. */
+diff --git a/packages/subagent/subagent/src/types.ts b/packages/subagent/subagent/src/types.ts
+index 2c52097..150d406 100644
+--- a/packages/subagent/subagent/src/types.ts
++++ b/packages/subagent/subagent/src/types.ts
+@@ -322,3 +322,30 @@ export interface SubagentProvider {
+    */
+   prepareContinuable?(request: ContinuableCreateRequest): Promise<ContinuableCreateSpec>
+ }
++
++/** Operations governed by the optional protocol-v1 admission authority. */
++export type SubagentAdmissionOperationV1 = 'new-one-shot' | 'new-continuable' | 'cold-resume'
++export type SubagentAdmissionReleaseReasonV1 = 'startup-failed' | 'quiescent'
++
++export interface SubagentAdmissionChildBindingV1 {
++  readonly childSessionId: string
++  readonly localParentSessionId?: string
++}
++
++export interface SubagentAdmissionRequestV1 {
++  readonly requestId: string
++  readonly operation: SubagentAdmissionOperationV1
++  readonly provider: string
++  readonly parentSessionId: string
++  readonly childSessionId?: string
++}
++
++export interface SubagentAdmissionPermitV1 {
++  bindChild(binding: SubagentAdmissionChildBindingV1): void
++  release(reason: SubagentAdmissionReleaseReasonV1): Promise<void>
++}
++
++export interface SubagentAdmissionPolicyV1 {
++  readonly protocolVersion: 1
++  acquire(request: Readonly<SubagentAdmissionRequestV1>, signal: AbortSignal): Promise<SubagentAdmissionPermitV1>
++}

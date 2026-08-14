@@ -130,12 +130,12 @@ describe('dsh-subagent-admission package manifest', () => {
     expect(baseline.discussion131.observedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/)
     expect(baseline.strictTargets).toEqual([{
       patchSha256: createHash('sha256')
-        .update(readFileSync(resolve(workspaceRoot, 'patches/dsh-subagent-admission-seam.patch')))
+        .update(readFileSync(resolve(workspaceRoot, 'patches/dsh-subagent-admission-seam-slim.patch')))
         .digest('hex'),
       protocolVersion: 1,
       sourceCommit: baseline.source.commit,
       sourcePackageVersion: baseline.source.packageVersion,
-      verificationCommand: 'corepack pnpm tsx scripts/verify-seam-patch.mts',
+      verificationCommand: 'corepack pnpm tsx scripts/verify-seam-patch.mts --patch slim',
     }])
     expect(baseline.strictTargetsCurrent).toBe(true)
     expect(['aligned', 'source-npm-diverged']).toContain(baseline.status)

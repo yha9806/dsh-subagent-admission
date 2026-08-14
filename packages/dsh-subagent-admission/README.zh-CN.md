@@ -110,17 +110,24 @@ pnpm exec dsh plugin --profile web add \
 
 bundle 默认是 Audit。这个命令不会让原版 DSH 获得容量 enforcement。Strict
 只适用于[实验性 upstream seam 提案](docs/upstream-seam.md)中记录的精确 source
-target 和 reference patch：
+target 和已验证的 seam patches：
 
-`patches/dsh-subagent-admission-seam.patch` SHA-256：
-`1340a9ffabde8310f68a7d66c4dacecda5dba263dd51666740801f5ec2c69135`。
+- **Canonical 基准补丁（slim）** (`patches/dsh-subagent-admission-seam-slim.patch`)：
+  SHA-256 `b29860806eb446dc4df1789565c26192b808d638cf404b237c447df10f75c215`
+  （已晋升为 canonical 基准，225 行变更，448 行序列化补丁）
+- **可恢复的 Reference 补丁** (`patches/dsh-subagent-admission-seam.patch`)：
+  SHA-256 `1340a9ffabde8310f68a7d66c4dacecda5dba263dd51666740801f5ec2c69135`
+  （保留的可恢复 reference 工件，418 行变更，607 行序列化补丁）
 
 ```bash
 # 证明 fixture 在未打 patch 的目标上是 RED。
 pnpm exec tsx scripts/verify-seam-patch.mts --expect-unpatched-failure
 
-# 在一次性精确目标 worktree 中应用并验证 protocol v1。
-pnpm exec tsx scripts/verify-seam-patch.mts
+# 在一次性精确目标 worktree 中应用并验证 canonical slim 基准补丁。
+pnpm exec tsx scripts/verify-seam-patch.mts --patch slim
+
+# 在一次性精确目标 worktree 中应用并验证可恢复的 reference 补丁。
+pnpm exec tsx scripts/verify-seam-patch.mts --patch reference
 ```
 
 这些命令都不会调用模型。安装 tarball、收到 HTTP 200 或渲染 GUI，都不是
@@ -199,11 +206,24 @@ workflow runs 才是远端证据，仅有 workflow 配置或本地结果不是�
 - 当前 patched Strict 是提案和测试载体，不是 upstream 已接受的修改或可持续
   安装形态。形成 documented、zero-patch 的 Strict extension point 才是产品化 Gate。
 
+## Upstream 设计包
+
+为了向 DeepSeek Harness maintainers 提议这一可选的生命周期准入能力（且不要求 core 包含插件的策略与 UI），本仓库提供：
+
+- [提议的 Agent Note](docs/upstream-agent-note.md) — 关于 `registerAdmissionPolicy(policy)` 与 protocol v1 的正式 Service Definition / Provider / Consumer 规范；
+- [Discussion #131 讨论草案](docs/discussion-131-draft.md) — 紧凑（150–180 词）、以证据为先的草案，仅提出一个聚焦的扩展点设计问题；
+- [实验性 upstream seam](docs/upstream-seam.md) — 详细的 call-site 分析与双 patch 验证数据；
+- 验证补丁：canonical slim 基准 (`patches/dsh-subagent-admission-seam-slim.patch`) 与可恢复 reference (`patches/dsh-subagent-admission-seam.patch`)。
+
+> **外部边界说明：** 跟踪 Discussion 草案不构成发布授权。未收到 maintainer 回复、未提交官方 PR，亦无官方采纳。架构始终保持 80% 协议与策略内核 / 20% 原生 GUI 的分工：GUI 是操作员观察界面，绝非产品边界。Zero-patch Strict 始终是最终产品化门禁。
+
 ## 项目文档
 
 - [架构与不变量](docs/architecture.md)
 - [兼容矩阵与升级 gate](docs/compatibility.md)
 - [实验性 upstream seam](docs/upstream-seam.md)
+- [提议的 upstream Agent Note](docs/upstream-agent-note.md)
+- [Discussion #131 草案](docs/discussion-131-draft.md)
 - [新颖性与生态审计](compatibility/ecosystem-audit.md)
 - [安全复现 #131](docs/reproduction.md)
 - [安全策略](SECURITY.md)

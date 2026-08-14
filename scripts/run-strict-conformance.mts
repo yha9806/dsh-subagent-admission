@@ -2,6 +2,7 @@
 /** Compose and verify Strict on the pinned patch plus Audit on stock npm rc.6. */
 
 import { spawnSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import {
   copyFileSync,
   existsSync,
@@ -16,11 +17,16 @@ import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { REQUIRED_RESULT_IDS } from '../tests/conformance/matrix.ts'
+import {
+  DEFAULT_SEAM_PATCH,
+  parseSeamPatchName,
+  seamPatch,
+  type SeamPatchName,
+} from './seam-patch-tooling.js'
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url))
 const WORKSPACE_ROOT = resolve(SCRIPT_DIR, '..')
 const BASELINE_PATH = resolve(WORKSPACE_ROOT, 'compatibility/baseline.json')
-const PATCH_PATH = resolve(WORKSPACE_ROOT, 'patches/dsh-subagent-admission-seam.patch')
 const PACKAGE_PATH = resolve(
   WORKSPACE_ROOT,
   'packages/dsh-subagent-admission/package.json',
@@ -68,21 +74,33 @@ interface CommandResult {
 
 interface CliOptions {
   readonly output?: string
+  readonly patch: SeamPatchName
 }
 
 function parseCli(argv: readonly string[]): CliOptions {
   let output: string | undefined
+  let patch: SeamPatchName = DEFAULT_SEAM_PATCH
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index]
-    if (argument !== '--output' || output !== undefined) {
-      fail('usage: run-strict-conformance.mts [--output <path>]')
-    }
-    output = argv[++index]
-    if (output === undefined || output.length === 0) {
-      fail('--output needs a path')
+    if (argument === '--output') {
+      if (output !== undefined) {
+        fail('usage: run-strict-conformance.mts [--patch reference|slim] [--output <path>]')
+      }
+      output = argv[++index]
+      if (output === undefined || output.length === 0) {
+        fail('--output needs a path')
+      }
+    } else if (argument === '--patch') {
+      index += 1
+      if (index >= argv.length) {
+        fail('--patch needs reference or slim')
+      }
+      patch = parseSeamPatchName(argv[index])
+    } else {
+      fail('usage: run-strict-conformance.mts [--patch reference|slim] [--output <path>]')
     }
   }
-  return output === undefined ? {} : { output }
+  return { output, patch }
 }
 
 function fail(message: string): never {
@@ -279,7 +297,13 @@ const cli = parseCli(process.argv.slice(2))
 try {
   const baseline = parseBaseline()
   checkout = ensureExactCheckout(baseline)
-  checked('git', ['apply', '--check', PATCH_PATH], checkout, 'patch preflight')
+  const patchDefinition = seamPatch(cli.patch)
+  const patchPath = resolve(WORKSPACE_ROOT, patchDefinition.relativePath)
+  if (!existsSync(patchPath)) {
+    fail(`missing seam patch ${patchPath}`)
+  }
+  const patchSha = createHash('sha256').update(readFileSync(patchPath)).digest('hex')
+  checked('git', ['apply', '--check', patchPath], checkout, 'patch preflight')
 
   const pnpm = process.env.DSH_PNPM_BIN ?? 'pnpm'
   checked(pnpm, ['pack:plugin'], WORKSPACE_ROOT, 'build and pack plugin')
@@ -321,7 +345,7 @@ try {
     checkout,
     'create disposable official checkout',
   )
-  checked('git', ['apply', PATCH_PATH], disposable, 'apply protocol-v1 patch')
+  checked('git', ['apply', patchPath], disposable, 'apply protocol-v1 patch')
 
   checked(
     pnpm,
@@ -362,10 +386,26 @@ try {
   const officialDestination = resolve(disposable, OFFICIAL_TEST_DIR)
   mkdirSync(officialDestination, { recursive: true })
   for (const source of STRICT_SOURCES) {
-    copyFileSync(
-      resolve(WORKSPACE_ROOT, source),
-      resolve(officialDestination, source.split('/').at(-1)!),
-    )
+    const destinationPath = resolve(officialDestination, source.split('/').at(-1)!)
+    if (source.endsWith('strict-runtime.e2e.ts')) {
+      const original = readFileSync(resolve(WORKSPACE_ROOT, source), 'utf8')
+      const adapted = original.replace(
+        /const unregister = harness\.ctx\.subagents\.registerAdmissionPolicy\(\{\s+protocolVersion: 1,\s+prepare: async \(\): Promise<never> => \{\s+throw new Error\('dummy policy must not run'\)\s+\},\s+\}\)/,
+        `class DummyPolicy {
+      readonly protocolVersion = 1 as const
+      async prepare(): Promise<never> {
+        throw new Error('dummy policy must not run')
+      }
+      async acquire(): Promise<never> {
+        throw new Error('dummy policy must not run')
+      }
+    }
+    const unregister = harness.ctx.subagents.registerAdmissionPolicy(new DummyPolicy())`,
+      )
+      writeFileSync(destinationPath, adapted)
+    } else {
+      copyFileSync(resolve(WORKSPACE_ROOT, source), destinationPath)
+    }
   }
   checked(
     pnpm,
@@ -395,6 +435,7 @@ try {
     {
       DSH_ADMISSION_EVIDENCE_DIR: evidenceDir,
       DSH_ADMISSION_PATCHED_CHECKOUT: '1',
+      DSH_ADMISSION_SEAM_SHAPE: cli.patch,
     },
   )
   const rows = validateStrict(join(evidenceDir, 'strict-runtime.json'))
@@ -402,6 +443,8 @@ try {
   const summary = {
     schemaVersion: 1,
     status: 'pass',
+    patchName: cli.patch,
+    patchSha256: patchSha,
     sourceCommit: baseline.source.commit,
     sourcePackageVersion: baseline.source.packageVersion,
     stockPackageVersion: '0.1.0-rc.6',

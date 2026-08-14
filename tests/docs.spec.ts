@@ -43,6 +43,8 @@ describe('release-candidate documentation', () => {
       'docs/compatibility.md',
       'docs/upstream-seam.md',
       'docs/reproduction.md',
+      'docs/upstream-agent-note.md',
+      'docs/discussion-131-draft.md',
       'compatibility/ecosystem-audit.md',
       'docs/assets/admission-control.png',
       'evidence/.gitkeep',
@@ -96,7 +98,7 @@ describe('release-candidate documentation', () => {
 
   it('pins the exact source, protocol, patch, and source/npm divergence', () => {
     const baseline = json('compatibility/baseline.json')
-    const patchHash = sha256('patches/dsh-subagent-admission-seam.patch')
+    const patchHash = sha256('patches/dsh-subagent-admission-seam-slim.patch')
     expect(baseline.source.commit).toBe('47f943859bef60e4160492346772ded9b24f765a')
     expect(baseline.source.packageVersion).toBe('0.1.0-rc.5')
     expect(baseline.npm['@deepseek-ai/dsh'].next).toBe('0.1.0-rc.6')
@@ -104,6 +106,7 @@ describe('release-candidate documentation', () => {
     expect(baseline.strictTargets).toEqual([expect.objectContaining({
       protocolVersion: 1,
       patchSha256: patchHash,
+      verificationCommand: 'corepack pnpm tsx scripts/verify-seam-patch.mts --patch slim',
     })])
     for (const relativePath of [
       'README.md',
@@ -222,5 +225,91 @@ describe('release-candidate documentation', () => {
     expect(text('docs/reproduction.md')).toContain('pnpm release:evidence:check')
     expect(text('docs/compatibility.md')).toContain('Workflow configuration is not evidence')
     expect(text('docs/compatibility.md')).toContain('zero-patch Strict')
+  })
+
+  it('packages the proposed Agent Note for upstream extension-point review', () => {
+    const note = text('docs/upstream-agent-note.md')
+    expect(note.startsWith('Status: proposed\n')).toBe(true)
+    for (const heading of [
+      '# Optional lifecycle-owned subagent admission',
+      '## Problem',
+      '## Alternatives considered',
+      '## Decision',
+      '## Protocol',
+      '## Lifecycle boundaries',
+      '## Cancellation and failure semantics',
+      '## Testing',
+      '## Consequences',
+      '## Deferred work',
+    ]) {
+      expect(note).toContain(heading)
+    }
+
+    for (const term of [
+      'Service Definition',
+      'Provider',
+      'Consumer',
+      'acquire',
+      'bindChild',
+      'startup-failed',
+      'quiescent',
+      'cancellation',
+      'tombstone',
+      'ADMISSION_CLOSED',
+      'zero-patch Strict',
+      '47f943859bef60e4160492346772ded9b24f765a',
+      '0.1.0-rc.5',
+      'registerContinuableSetup',
+      'Cordis waterfall',
+    ]) {
+      expect(note).toContain(term)
+    }
+
+    // Ensure exclusions
+    expect(note.toLowerCase()).not.toMatch(/hiring|employment|salary|job application|recruitment/)
+    expect(note).not.toContain('ledger')
+    expect(note).not.toContain('perRootAdmittedTotal')
+  })
+
+  it('packages the Discussion #131 draft without claiming publication or adoption', () => {
+    const draft = text('docs/discussion-131-draft.md')
+    expect(draft).toContain('independent')
+    expect(draft).toContain('experimental')
+    expect(draft).toContain('56')
+    expect(draft).toContain('4')
+    expect(draft).toContain('5')
+    expect(draft).toContain('47')
+    expect(draft).toContain('dsh-turn-budget')
+    expect(draft).toContain('https://github.com/yha9806/dsh-subagent-admission')
+    expect(draft).toContain('https://github.com/yha9806/dsh-subagent-admission/blob/main/docs/reproduction.md')
+    expect(draft).toContain('https://github.com/yha9806/dsh-subagent-admission/blob/main/docs/upstream-agent-note.md')
+    expect(draft).toContain('https://github.com/Nunchakus888/dsh-turn-budget')
+
+    // Exactly one question
+    const questions = draft.match(/\?/g) ?? []
+    expect(questions.length).toBe(1)
+    expect(draft).toContain('Would this optional lifecycle-owned admission registration on ctx.subagents fit as a documented extension point?')
+
+    // Exclude markdown link destinations for word counting
+    const textWithoutLinks = draft
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+      .replace(/`([^`]+)`/g, '$1')
+      .trim()
+    const words = textWithoutLinks.split(/\s+/).filter(Boolean)
+    expect(words.length).toBeGreaterThanOrEqual(150)
+    expect(words.length).toBeLessThanOrEqual(180)
+
+    // No prohibited language
+    expect(draft.toLowerCase()).not.toMatch(/pull request|please merge|hire me|job|resume|cv|maintainer|@deepseek/)
+    expect(draft.toLowerCase()).not.toMatch(/endorsed|officially adopted|merged/)
+  })
+
+  it('documents both canonical reference and qualified slim candidate in docs and READMEs', () => {
+    for (const file of ['README.md', 'README.zh-CN.md', 'docs/upstream-seam.md', 'docs/compatibility.md']) {
+      const content = text(file)
+      expect(content).toContain('1340a9ffabde8310f68a7d66c4dacecda5dba263dd51666740801f5ec2c69135')
+      expect(content).toContain('b29860806eb446dc4df1789565c26192b808d638cf404b237c447df10f75c215')
+      expect(content).toContain('dsh-turn-budget')
+    }
   })
 })

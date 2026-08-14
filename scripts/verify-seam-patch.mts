@@ -15,21 +15,22 @@ import { tmpdir } from 'node:os'
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import {
+  DEFAULT_SEAM_PATCH,
+  parseSeamPatchName,
+  seamPatch,
+  type SeamPatchName,
+} from './seam-patch-tooling.js'
+
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url))
 const WORKSPACE_ROOT = resolve(SCRIPT_DIR, '..')
 const BASELINE_PATH = resolve(WORKSPACE_ROOT, 'compatibility/baseline.json')
-const PATCH_PATH = resolve(
-  WORKSPACE_ROOT,
-  'patches/dsh-subagent-admission-seam.patch',
-)
 const FIXTURE_PATH = resolve(
   WORKSPACE_ROOT,
   'tests/upstream/admission-policy.spec.ts',
 )
 const OFFICIAL_TEST_PATH =
   'packages/subagent/subagent/tests/admission-policy.spec.ts'
-const CANONICAL_COMMAND =
-  'corepack pnpm tsx scripts/verify-seam-patch.mts'
 const TEST_COMMAND = [
   'exec',
   'vitest',
@@ -51,6 +52,11 @@ interface CommandResult {
   readonly status: number
   readonly stdout: string
   readonly stderr: string
+}
+
+interface CommandOptions {
+  readonly print?: boolean
+  readonly env?: NodeJS.ProcessEnv
 }
 
 function fail(message: string): never {
@@ -78,13 +84,14 @@ function command(
   executable: string,
   args: readonly string[],
   cwd: string,
-  options: { readonly print?: boolean } = {},
+  options: CommandOptions = {},
 ): CommandResult {
   const result = spawnSync(executable, [...args], {
     cwd,
     encoding: 'utf8',
     env: {
       ...process.env,
+      ...options.env,
       CI: '1',
     },
     maxBuffer: 128 * 1024 * 1024,
@@ -110,7 +117,7 @@ function checked(
   args: readonly string[],
   cwd: string,
   label: string,
-  options: { readonly print?: boolean } = {},
+  options: CommandOptions = {},
 ): CommandResult {
   const result = command(executable, args, cwd, options)
   if (result.status !== 0) {
@@ -202,22 +209,70 @@ function verifyFixturePresent(): void {
   }
 }
 
-function patchSha256(): string {
-  return createHash('sha256').update(readFileSync(PATCH_PATH)).digest('hex')
+function patchSha256(filePath: string): string {
+  return createHash('sha256').update(readFileSync(filePath)).digest('hex')
 }
 
-const argument = process.argv[2]
-if (
-  argument !== undefined &&
-  argument !== '--expect-unpatched-failure'
-) {
+interface ParsedOptions {
+  readonly expectUnpatchedFailure: boolean
+  readonly patchName: SeamPatchName
+  readonly focus?: 'one-shot'
+}
+
+function parseArgs(args: readonly string[]): ParsedOptions {
+  let expectUnpatchedFailure = false
+  let patchName: SeamPatchName = DEFAULT_SEAM_PATCH
+  let focus: 'one-shot' | undefined = undefined
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i]
+    if (arg === '--expect-unpatched-failure') {
+      expectUnpatchedFailure = true
+    } else if (arg === '--patch') {
+      i++
+      if (i >= args.length) {
+        throw new Error('missing value for --patch')
+      }
+      patchName = parseSeamPatchName(args[i])
+    } else if (arg === '--focus') {
+      i++
+      if (i >= args.length || args[i] !== 'one-shot') {
+        throw new Error('focus must be one-shot')
+      }
+      focus = 'one-shot'
+    } else {
+      throw new Error(`unknown argument: ${arg}`)
+    }
+  }
+
+  if (expectUnpatchedFailure && (patchName !== DEFAULT_SEAM_PATCH || focus !== undefined || args.length > 1)) {
+    throw new Error(
+      '--expect-unpatched-failure cannot be combined with --patch or --focus',
+    )
+  }
+
+  return {
+    expectUnpatchedFailure,
+    patchName,
+    focus,
+  }
+}
+
+let options: ParsedOptions
+try {
+  options = parseArgs(process.argv.slice(2))
+} catch (error) {
+  console.error((error as Error).message)
   console.error(
-    'usage: verify-seam-patch.mts [--expect-unpatched-failure]',
+    'usage: verify-seam-patch.mts [--patch reference|slim] [--focus one-shot] | --expect-unpatched-failure',
   )
   process.exit(2)
 }
 
-const expectUnpatchedFailure = argument === '--expect-unpatched-failure'
+const { expectUnpatchedFailure, patchName, focus } = options
+const patchDefinition = seamPatch(patchName)
+const patchAbsolutePath = resolve(WORKSPACE_ROOT, patchDefinition.relativePath)
+
 let checkout = ''
 let disposable = ''
 
@@ -226,12 +281,12 @@ try {
   verifyFixturePresent()
   checkout = ensureExactCheckout(baseline)
   if (!expectUnpatchedFailure) {
-    if (!existsSync(PATCH_PATH)) {
-      fail(`missing seam patch ${PATCH_PATH}`)
+    if (!existsSync(patchAbsolutePath)) {
+      fail(`missing seam patch ${patchAbsolutePath}`)
     }
     checked(
       'git',
-      ['apply', '--check', PATCH_PATH],
+      ['apply', '--check', patchAbsolutePath],
       checkout,
       'patch preflight',
     )
@@ -248,7 +303,7 @@ try {
   )
   copyFileSync(FIXTURE_PATH, resolve(disposable, OFFICIAL_TEST_PATH))
   if (!expectUnpatchedFailure) {
-    checked('git', ['apply', PATCH_PATH], disposable, 'apply seam patch')
+    checked('git', ['apply', patchAbsolutePath], disposable, 'apply seam patch')
   }
 
   const pnpm = process.env.DSH_PNPM_BIN ?? 'pnpm'
@@ -272,7 +327,19 @@ try {
     'build official subagent package',
   )
 
-  const test = command(pnpm, TEST_COMMAND, disposable)
+  const testArgs = [...TEST_COMMAND]
+  if (focus === 'one-shot') {
+    testArgs.push(
+      '-t',
+      'SubagentRuntime protocol-v1 admission registration|one-shot admission ownership',
+    )
+  }
+
+  const test = command(pnpm, testArgs, disposable, {
+    env: {
+      DSH_ADMISSION_SEAM_SHAPE: patchName,
+    },
+  })
   if (expectUnpatchedFailure) {
     if (test.status === 0) {
       fail('unpatched source unexpectedly passed the admission fixture')
@@ -288,16 +355,30 @@ try {
     fail(`patched official subagent tests failed with exit code ${test.status}`)
   }
 
+  const invokedArgs = process.argv.slice(2)
+  const canonicalCommand = invokedArgs.length === 0
+    ? 'corepack pnpm tsx scripts/verify-seam-patch.mts'
+    : `corepack pnpm tsx scripts/verify-seam-patch.mts ${invokedArgs.join(' ')}`
+
   const result = {
     schemaVersion: 1,
-    status: expectUnpatchedFailure ? 'expected-failure' : 'pass',
+    status: expectUnpatchedFailure
+      ? 'expected-failure'
+      : (focus !== undefined ? 'focused-pass' : 'pass'),
     sourceCommit: baseline.source.commit,
     sourcePackageVersion: baseline.source.packageVersion,
-    ...expectUnpatchedFailure ? {} : { patchSha256: patchSha256() },
+    ...expectUnpatchedFailure
+      ? {}
+      : {
+          patchName,
+          patchPath: patchDefinition.relativePath,
+          patchSha256: patchSha256(patchAbsolutePath),
+          focus: focus ?? null,
+        },
     node: process.version,
     pnpm: trimmed(pnpm, ['--version'], disposable),
-    command: CANONICAL_COMMAND,
-    testCommand: `pnpm ${TEST_COMMAND.join(' ')}`,
+    command: canonicalCommand,
+    testCommand: `pnpm ${testArgs.join(' ')}`,
   }
   console.log(JSON.stringify(result, null, 2))
 } catch (error) {

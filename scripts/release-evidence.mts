@@ -22,6 +22,7 @@ import {
 import { fileURLToPath } from 'node:url'
 
 import { REQUIRED_RESULT_IDS } from '../tests/conformance/matrix.ts'
+import { DEFAULT_SEAM_PATCH, seamPatch } from './seam-patch-tooling.js'
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url))
 const ROOT = resolve(SCRIPT_DIR, '..')
@@ -382,7 +383,8 @@ function parsePackage(): PackageManifest {
 }
 
 function currentPatchHash(): string {
-  return sha256(readFileSync(resolve(ROOT, 'patches/dsh-subagent-admission-seam.patch')))
+  const patchDefinition = seamPatch(DEFAULT_SEAM_PATCH)
+  return sha256(readFileSync(resolve(ROOT, patchDefinition.relativePath)))
 }
 
 function sourceFingerprint(): SourceFingerprint {

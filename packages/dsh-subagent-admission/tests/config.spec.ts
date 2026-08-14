@@ -154,9 +154,7 @@ describe('Task 2A admission contracts', () => {
       }>();
       expectTypeOf<
         Parameters<SubagentAdmissionPermitV1['release']>[0]
-      >().toEqualTypeOf<
-        'completed' | 'aborted' | 'error' | 'startup-failed' | 'disposed'
-      >();
+      >().toEqualTypeOf<'startup-failed' | 'quiescent'>();
       expectTypeOf<
         ReturnType<SubagentAdmissionPermitV1['release']>
       >().toEqualTypeOf<Promise<void>>();
@@ -167,7 +165,13 @@ describe('Task 2A admission contracts', () => {
         SubagentAdmissionPolicyV1['protocolVersion']
       >().toEqualTypeOf<1>();
       expectTypeOf<
-        ReturnType<SubagentAdmissionPolicyV1['prepare']>
+        Parameters<SubagentAdmissionPolicyV1['acquire']>
+      >().toEqualTypeOf<[
+        request: Readonly<SubagentAdmissionRequestV1>,
+        signal: AbortSignal,
+      ]>();
+      expectTypeOf<
+        ReturnType<SubagentAdmissionPolicyV1['acquire']>
       >().toEqualTypeOf<Promise<SubagentAdmissionPermitV1>>();
     });
   });

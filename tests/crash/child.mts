@@ -99,12 +99,15 @@ const authority = new AdmissionAuthority({
   clock: { now: (): number => 1 },
 })
 
-await authority.prepare({
-  requestId: `crash-request-${args.backend}`,
-  operation: 'new-one-shot',
-  provider: 'crash-fixture',
-  parentSessionId: 'root',
-})
+await authority.acquire(
+  {
+    requestId: `crash-request-${args.backend}`,
+    operation: 'new-one-shot',
+    provider: 'crash-fixture',
+    parentSessionId: 'root',
+  },
+  new AbortController().signal,
+)
 
 if (leases.globalActive !== 1 || leases.snapshot().length !== 1) {
   fail('admission did not own one active lease after ledger commit')
