@@ -30,6 +30,14 @@
     "repository": "https://github.com/deepseek-ai/deepseek-harness.git"
   },
   "status": "source-npm-diverged",
-  "strictTargets": [],
+  "strictTargets": [
+    {
+      "patchSha256": "f557620306ca223edad66f1890829b5e74cc618e010f26c7d06a37124ec3aa04",
+      "protocolVersion": 1,
+      "sourceCommit": "47f943859bef60e4160492346772ded9b24f765a",
+      "sourcePackageVersion": "0.1.0-rc.5",
+      "verificationCommand": "corepack pnpm tsx scripts/verify-seam-patch.mts"
+    }
+  ],
   "strictTargetsCurrent": true
 }

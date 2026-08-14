@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -112,7 +113,16 @@ describe('dsh-subagent-admission package manifest', () => {
     expect(baseline.discussion131.url).toBe('https://github.com/deepseek-ai/deepseek-harness/discussions/131')
     expect(baseline.discussion131.state).toMatch(/^(open|closed)$/)
     expect(baseline.discussion131.observedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/)
-    expect(baseline.strictTargets).toEqual([])
+    expect(baseline.strictTargets).toEqual([{
+      patchSha256: createHash('sha256')
+        .update(readFileSync(resolve(workspaceRoot, 'patches/dsh-subagent-admission-seam.patch')))
+        .digest('hex'),
+      protocolVersion: 1,
+      sourceCommit: baseline.source.commit,
+      sourcePackageVersion: baseline.source.packageVersion,
+      verificationCommand: 'corepack pnpm tsx scripts/verify-seam-patch.mts',
+    }])
+    expect(baseline.strictTargetsCurrent).toBe(true)
     expect(['aligned', 'source-npm-diverged']).toContain(baseline.status)
   })
 })
