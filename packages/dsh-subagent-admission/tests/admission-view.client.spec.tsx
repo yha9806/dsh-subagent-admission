@@ -312,7 +312,18 @@ describe('native conversation.view registration', () => {
       })
     })
     const disposeRemote = vi.fn(async () => { events.push('remote-unmounted') })
-    const ctx = {
+    let ctx!: ClientContext
+    const injectService = vi.fn((_deps: readonly string[], callback: (scope: ClientContext) => unknown) => {
+      let disposeFeature: () => void | Promise<void> = () => {}
+      const ready = Promise.resolve().then(() => callback(ctx)).then((dispose) => {
+        if (typeof dispose === 'function') disposeFeature = dispose as () => void | Promise<void>
+      })
+      return {
+        await: async () => { await ready },
+        dispose: async () => { await ready; await disposeFeature() },
+      }
+    })
+    ctx = {
       locale,
       slots,
       sessions: {},
@@ -320,10 +331,15 @@ describe('native conversation.view registration', () => {
         $mount: vi.fn(async () => disposeRemote),
         snapshot: { get, watch },
       },
+      inject: injectService,
     } as unknown as ClientContext
 
     expect(clientInject).toEqual(['remote', 'slots', 'locale', 'sessions'])
     const disposePlugin = await apply(ctx)
+    expect(injectService).toHaveBeenCalledWith(
+      ['remote.snapshot', 'slots', 'locale', 'sessions'],
+      expect.any(Function),
+    )
 
     const ids = slots.entries('conversation.view').map(entry => entry.options.id)
     expect(ids).toEqual(['chat', 'admission-control'])

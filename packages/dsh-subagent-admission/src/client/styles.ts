@@ -7,10 +7,10 @@ const ADMISSION_CONTROL_CSS = `
   box-sizing: border-box;
   color: var(--foreground, inherit);
   display: grid;
-  gap: 1rem;
+  gap: 0.75rem;
   margin: 0 auto;
   max-width: 1120px;
-  padding: 1rem;
+  padding: 0.75rem 1rem;
   width: 100%;
 }
 .dsh-admission *, .dsh-admission *::before, .dsh-admission *::after { box-sizing: border-box; }
@@ -21,8 +21,8 @@ const ADMISSION_CONTROL_CSS = `
   border: 1px solid var(--border, rgba(127, 127, 127, 0.25));
   border-radius: 0.75rem;
   display: grid;
-  gap: 0.75rem;
-  padding: 0.875rem;
+  gap: 0.55rem;
+  padding: 0.7rem 0.875rem;
 }
 .dsh-admission__section-title { font-size: 0.9rem; font-weight: 650; }
 .dsh-admission__status-line { align-items: flex-start; display: flex; gap: 0.75rem; }
@@ -54,15 +54,15 @@ const ADMISSION_CONTROL_CSS = `
   display: grid;
   gap: 0.3rem;
   min-width: 0;
-  padding: 0.7rem;
+  padding: 0.5rem 0.65rem;
 }
 .dsh-admission__quota-label { color: var(--muted-foreground, #6b7280); font-size: 0.78rem; }
 .dsh-admission__quota-value { font-size: 1rem; font-variant-numeric: tabular-nums; font-weight: 700; }
 .dsh-admission__table-wrap { overflow-x: auto; }
-.dsh-admission__table { border-collapse: collapse; font-size: 0.78rem; min-width: 700px; width: 100%; }
+.dsh-admission__table { border-collapse: collapse; font-size: 0.78rem; line-height: 1.25; min-width: 700px; width: 100%; }
 .dsh-admission__table th, .dsh-admission__table td {
   border-bottom: 1px solid var(--border, rgba(127, 127, 127, 0.22));
-  padding: 0.5rem 0.55rem;
+  padding: 0.32rem 0.5rem;
   text-align: left;
   vertical-align: top;
 }

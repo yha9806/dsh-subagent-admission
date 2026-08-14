@@ -23,6 +23,14 @@ export const name = 'dsh-subagent-admission'
 /** Required Client services for Remote lifecycle and the native conversation view. */
 export const inject = ['remote', 'slots', 'locale', 'sessions']
 
+/** Services read only after this package's generated Remote contribution mounts. */
+const SNAPSHOT_FEATURE_INJECT = [
+  'remote.snapshot',
+  'slots',
+  'locale',
+  'sessions',
+] as const
+
 type Disposer = () => void | Promise<void>
 
 async function disposeReverse(disposers: readonly Disposer[]): Promise<void> {
@@ -37,13 +45,12 @@ async function disposeReverse(disposers: readonly Disposer[]): Promise<void> {
   if (errors.length > 0) throw new AggregateError(errors, 'Admission Control cleanup failed')
 }
 
-/** Mount Remote, register the native view, and own every acquired resource. */
-export async function apply(ctx: ClientContext): Promise<() => Promise<void>> {
+/** Register the controller and native view inside an endpoint-authorized child fiber. */
+async function mountSnapshotFeature(
+  ctx: ClientContext,
+): Promise<() => Promise<void>> {
   const disposers: Disposer[] = []
   try {
-    const disposeRemote = await ctx.remote.$mount(snapshotRemote)
-    disposers.push(disposeRemote)
-
     const controller = new AdmissionSnapshotController(ctx.remote.snapshot)
     disposers.push(() => { controller.stop() })
 
@@ -75,5 +82,40 @@ export async function apply(ctx: ClientContext): Promise<() => Promise<void>> {
     if (!active) return
     active = false
     await disposeReverse(disposers)
+  }
+}
+
+/** Mount Remote first, then authorize its endpoint before any property read. */
+export async function apply(ctx: ClientContext): Promise<() => Promise<void>> {
+  const disposeRemote = await ctx.remote.$mount(snapshotRemote)
+  const feature = ctx.inject(
+    [...SNAPSHOT_FEATURE_INJECT],
+    (scope: ClientContext) => mountSnapshotFeature(scope),
+  )
+  try {
+    await feature.await()
+  } catch (setupError) {
+    const cleanupErrors: unknown[] = []
+    await feature.dispose().catch(error => cleanupErrors.push(error))
+    await disposeRemote().catch(error => cleanupErrors.push(error))
+    if (cleanupErrors.length > 0) {
+      throw new AggregateError(
+        [setupError, ...cleanupErrors],
+        'Admission Control setup and rollback failed',
+      )
+    }
+    throw setupError
+  }
+
+  let active = true
+  return async () => {
+    if (!active) return
+    active = false
+    const errors: unknown[] = []
+    await feature.dispose().catch(error => errors.push(error))
+    await disposeRemote().catch(error => errors.push(error))
+    if (errors.length > 0) {
+      throw new AggregateError(errors, 'Admission Control cleanup failed')
+    }
   }
 }

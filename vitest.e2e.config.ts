@@ -11,7 +11,10 @@ export default defineConfig({
   }],
   test: {
     environment: 'node',
-    include: ['packages/**/*.e2e.ts', 'tests/**/*.e2e.ts'],
+    // Conformance/crash sources under tests/ are materialized by their
+    // dedicated runners into package or pinned-checkout graphs. They are not
+    // root-resolvable standalone suites.
+    include: ['packages/**/*.e2e.ts', 'tests/packed-install.e2e.ts'],
     passWithNoTests: true,
   },
 })

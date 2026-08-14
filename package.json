@@ -17,6 +17,7 @@
     "pretest": "pnpm build",
     "test": "vitest run",
     "test:e2e": "vitest run --config vitest.e2e.config.ts",
+    "packed:install": "tsx scripts/packed-install.mts",
     "pack:plugin": "pnpm build && pnpm --dir packages/dsh-subagent-admission pack --pack-destination ../../dist"
   },
   "devDependencies": {

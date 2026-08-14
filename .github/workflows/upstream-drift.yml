@@ -1,0 +1,60 @@
+name: Upstream drift
+
+on:
+  schedule:
+    - cron: '17 5 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: upstream-drift
+  cancel-in-progress: true
+
+jobs:
+  observe:
+    name: Observe official source, npm, and Discussion 131
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out pinned compatibility data
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.7.0
+
+      - name: Install Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24.x
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate a read-only candidate baseline
+        id: drift
+        continue-on-error: true
+        run: >-
+          pnpm exec tsx scripts/refresh-baseline.mts
+          --candidate evidence/upstream-candidate.json
+
+      - name: Upload the observed candidate
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: upstream-baseline-candidate
+          if-no-files-found: error
+          path: evidence/upstream-candidate.json
+          retention-days: 14
+
+      - name: Report informative drift failure
+        if: steps.drift.outcome != 'success'
+        run: |
+          echo "Official source/npm/Discussion identities drifted or could not be verified."
+          echo "The committed blocking baseline was not changed; inspect the candidate artifact."
+          exit 1

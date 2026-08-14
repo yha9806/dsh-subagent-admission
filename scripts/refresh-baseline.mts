@@ -18,7 +18,7 @@
  */
 
 import { execFile } from 'node:child_process'
-import { readFile, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
@@ -326,12 +326,18 @@ async function buildBaseline(): Promise<CompatibilityBaselineV1> {
 }
 
 function usage(): never {
-  console.error('usage: refresh-baseline.mts (--write | --check)')
+  console.error('usage: refresh-baseline.mts (--write | --check | --candidate <path>)')
   process.exit(2)
 }
 
 const mode = process.argv[2]
-if (mode !== '--write' && mode !== '--check') usage()
+if (mode !== '--write' && mode !== '--check' && mode !== '--candidate') usage()
+const requestedCandidatePath = process.argv[3]
+if (
+  (mode === '--candidate' && requestedCandidatePath === undefined)
+  || (mode !== '--candidate' && requestedCandidatePath !== undefined)
+  || process.argv.length > (mode === '--candidate' ? 4 : 3)
+) usage()
 
 try {
   const candidate = await buildBaseline()
@@ -342,7 +348,14 @@ try {
   } else {
     const existing = await readExistingBaseline()
     if (existing === undefined) fail('no committed baseline to check; run --write first')
-    if (stableStringify(stripWallClock(candidate)) !== stableStringify(stripWallClock(existing))) {
+    const drifted = stableStringify(stripWallClock(candidate)) !== stableStringify(stripWallClock(existing))
+    if (mode === '--candidate') {
+      const candidatePath = resolve(requestedCandidatePath!)
+      await mkdir(dirname(candidatePath), { recursive: true })
+      await writeFile(candidatePath, stableStringify(candidate))
+      console.log(`candidate baseline written: ${candidatePath}`)
+    }
+    if (drifted) {
       console.error('baseline drift detected: live identities differ from compatibility/baseline.json')
       process.exitCode = 1
     } else {

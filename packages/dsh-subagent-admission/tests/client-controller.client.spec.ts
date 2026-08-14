@@ -290,7 +290,18 @@ describe('admission Client entry', () => {
       const dispose = install()
       return () => { dispose() }
     })
-    const ctx = {
+    let ctx!: ClientContext
+    const injectService = vi.fn((_deps: readonly string[], callback: (scope: ClientContext) => unknown) => {
+      let disposeFeature: () => void | Promise<void> = () => {}
+      const ready = Promise.resolve().then(() => callback(ctx)).then((dispose) => {
+        if (typeof dispose === 'function') disposeFeature = dispose as () => void | Promise<void>
+      })
+      return {
+        await: async () => { await ready },
+        dispose: async () => { await ready; await disposeFeature() },
+      }
+    })
+    ctx = {
       remote: {
         $mount: mount,
         snapshot: { get, watch },
@@ -304,10 +315,15 @@ describe('admission Client entry', () => {
         register: registerView,
       },
       sessions: {},
+      inject: injectService,
     } as unknown as ClientContext
 
     const dispose = await apply(ctx)
     expect(clientInject).toEqual(['remote', 'slots', 'locale', 'sessions'])
+    expect(injectService).toHaveBeenCalledWith(
+      ['remote.snapshot', 'slots', 'locale', 'sessions'],
+      expect.any(Function),
+    )
     expect(mount).toHaveBeenCalledTimes(1)
     expect(mount.mock.calls[0]?.[0]).toMatchObject({
       package: 'dsh-subagent-admission',

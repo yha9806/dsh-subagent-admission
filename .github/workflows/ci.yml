@@ -1,0 +1,153 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux:
+    name: Linux / Node ${{ matrix.node }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        node:
+          - 22.19.0
+          - 24.x
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.7.0
+
+      - name: Install Node.js ${{ matrix.node }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Chromium for the native GUI gate
+        if: matrix.node == '24.x'
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Check the pinned compatibility baseline
+        run: pnpm baseline:check
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Run unit and property suites
+        run: pnpm test
+
+      - name: Build both plugin faces
+        run: pnpm build
+
+      - name: Run exact-target Strict conformance
+        run: pnpm exec tsx scripts/run-strict-conformance.mts
+
+      - name: Verify JSON crash recovery
+        run: pnpm exec tsx scripts/crash-fixture.mts --backend json
+
+      - name: Verify SQLite crash recovery
+        run: pnpm exec tsx scripts/crash-fixture.mts --backend sqlite
+
+      - name: Verify packed Audit and Strict installation
+        run: pnpm test:e2e -- tests/packed-install.e2e.ts
+        env:
+          DSH_PACKED_REPORT_PATH: evidence/packed-install-${{ matrix.node }}.json
+
+      - name: Capture the packed native GUI
+        if: matrix.node == '24.x'
+        run: >-
+          pnpm exec tsx scripts/packed-install.mts
+          --audit-only
+          --capture-gui
+          --screenshot evidence/ci-admission-control.png
+          --output evidence/packed-gui.json
+
+      - name: Upload raw Linux evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-node-${{ matrix.node }}-raw-evidence
+          if-no-files-found: warn
+          path: |
+            evidence/*.json
+            evidence/ci-admission-control.png
+          retention-days: 14
+
+  platform-smoke:
+    name: ${{ matrix.os }} / Node 24 smoke
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - macos-latest
+          - windows-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.7.0
+
+      - name: Install Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24.x
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify cooperative process ownership
+        run: pnpm exec vitest run packages/dsh-subagent-admission/tests/process-guard.spec.ts
+
+      - name: Build both plugin faces
+        run: pnpm build
+
+      - name: Verify Admission Control and browser bundle mounting
+        run: >-
+          pnpm exec vitest run
+          packages/dsh-subagent-admission/tests/admission-view.client.spec.tsx
+          packages/dsh-subagent-admission/tests/client-controller.client.spec.ts
+          packages/dsh-subagent-admission/tests/client-bundle.client.spec.ts
+
+      - name: Verify packed stock Audit installation
+        run: pnpm test:e2e -- tests/packed-install.e2e.ts
+        env:
+          DSH_PACKED_AUDIT_ONLY: '1'
+          DSH_PACKED_REPORT_PATH: evidence/packed-install-audit.json
+
+      - name: Upload raw platform evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.os }}-node-24-raw-evidence
+          if-no-files-found: warn
+          path: evidence/*.json
+          retention-days: 14
