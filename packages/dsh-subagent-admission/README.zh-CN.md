@@ -115,8 +115,8 @@ bundle 默认是 Audit。这个命令不会让原版 DSH 获得容量 enforcemen
 target 和已验证的 seam patches：
 
 - **Canonical 基准补丁（slim）** (`patches/dsh-subagent-admission-seam-slim.patch`)：
-  SHA-256 `b29860806eb446dc4df1789565c26192b808d638cf404b237c447df10f75c215`
-  （已晋升为 canonical 基准，225 行变更，448 行序列化补丁）
+  SHA-256 `1a3e351cab75ff22d55b0d2a8cb458cbee2794a769cb2f433e105dd421636073`
+  （已晋升为 canonical 基准，230 行变更，455 行序列化补丁）
 - **可恢复的 Reference 补丁** (`patches/dsh-subagent-admission-seam.patch`)：
   SHA-256 `1340a9ffabde8310f68a7d66c4dacecda5dba263dd51666740801f5ec2c69135`
   （保留的可恢复 reference 工件，418 行变更，607 行序列化补丁）

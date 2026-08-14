@@ -107,14 +107,14 @@ Admission and cancellation are strictly coordinated to prevent capacity leaks:
 The seam design is verified against exact official source commit `47f943859bef60e4160492346772ded9b24f765a` (`@deepseek-ai/dsh-subagent@0.1.0-rc.5`).
 
 The test suite includes:
-- 100% pass rate on all 269 official subagent tests.
-- A reusable upstream admission fixture testing 18 distinct behaviors: single registration, tombstoning, fail-closed unregistration, pre-provider acquisition, publication binding, post-quiescence release, startup rollback, cancellation propagation, resident follow-up reuse, cold resume admission, and descendant-first teardown ordering.
+- 249 stock official subagent tests plus 21 injected reusable admission-fixture tests, all passing (270 tests across 11 files).
+- The reusable fixture covers single registration, tombstoning, fail-closed unregistration, pre-provider acquisition, publication binding, post-quiescence release, startup rollback, one-shot and cold-resume cancellation propagation, resident follow-up reuse, cold resume admission, and descendant-first teardown ordering.
 
 ## Consequences
 
 - **Separation of concerns**: DeepSeek Harness core remains lightweight, clean, and unopinionated while providing a robust lifecycle hook for advanced resource management plugins.
 - **Cross-caller consistency**: All subagent creation paths—whether from tools, background plugins, or direct SDK calls—share one coherent admission authority.
-- **Non-trivial implementation**: Although the public protocol is minimal, integrating lifecycle-correct ownership requires precision across one-shot execution, continuable activation, and asynchronous cleanup. In the qualified candidate, the patch touches 3 official files (`types.ts`, `index.ts`, `continuation.ts`) with 225 total changed lines (101 in `continuation.ts`).
+- **Non-trivial implementation**: Although the public protocol is minimal, integrating lifecycle-correct ownership requires precision across one-shot execution, continuable activation, and asynchronous cleanup. In the qualified candidate, the patch touches 3 official files (`types.ts`, `index.ts`, `continuation.ts`) with 230 total changed lines (106 in `continuation.ts`).
 - **Productization gate**: Achieving a documented official extension point enables **zero-patch Strict** enforcement for community plugins without requiring local source patching.
 
 ## Deferred work

@@ -134,8 +134,8 @@ capacity. Strict is intentionally limited to the exact source target and
 verified seam patches documented in [the upstream seam proposal](docs/upstream-seam.md):
 
 - **Canonical baseline patch (slim)** (`patches/dsh-subagent-admission-seam-slim.patch`):
-  SHA-256 `b29860806eb446dc4df1789565c26192b808d638cf404b237c447df10f75c215`
-  (promoted canonical baseline, 225 changed lines, 448 serialized lines)
+  SHA-256 `1a3e351cab75ff22d55b0d2a8cb458cbee2794a769cb2f433e105dd421636073`
+  (promoted canonical baseline, 230 changed lines, 455 serialized lines)
 - **Recoverable reference patch** (`patches/dsh-subagent-admission-seam.patch`):
   SHA-256 `1340a9ffabde8310f68a7d66c4dacecda5dba263dd51666740801f5ec2c69135`
   (retained recoverable reference artifact, 418 changed lines, 607 serialized lines)

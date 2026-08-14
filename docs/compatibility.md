@@ -14,7 +14,7 @@ The blocking machine-readable source is
 | npm `@deepseek-ai/dsh` latest/next | `0.1.0-rc.6` / `0.1.0-rc.6` |
 | npm `@deepseek-ai/dsh-subagent` latest/next | `0.0.1-rc.1` / `0.1.0-rc.6` |
 | Protocol | `1` |
-| Canonical seam patch (slim) | `patches/dsh-subagent-admission-seam-slim.patch` (`b29860806eb446dc4df1789565c26192b808d638cf404b237c447df10f75c215`) |
+| Canonical seam patch (slim) | `patches/dsh-subagent-admission-seam-slim.patch` (`1a3e351cab75ff22d55b0d2a8cb458cbee2794a769cb2f433e105dd421636073`) |
 | Recoverable reference patch | `patches/dsh-subagent-admission-seam.patch` (`1340a9ffabde8310f68a7d66c4dacecda5dba263dd51666740801f5ec2c69135`) |
 | Plugin candidate | `dsh-subagent-admission@0.1.0-rc.1` |
 
@@ -42,8 +42,8 @@ silently becomes Audit.
 - Stock Audit is installable observability only. It cannot prevent a start and
   is not a #131 painkiller.
 - Patched Strict is a verified reference implementation and conformance system
-  for one exact source identity. The canonical slim seam patch is 225 changed lines
-  across three official files (448 serialized patch lines, including 101 changed
+  for one exact source identity. The canonical slim seam patch is 230 changed lines
+  across three official files (455 serialized patch lines, including 106 changed
   lines in `continuation.ts`), with the 607-line reference patch retained as a
   recoverable baseline artifact.
 - A documented official capability that supports **zero-patch Strict** is the

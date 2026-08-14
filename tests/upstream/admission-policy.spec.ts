@@ -890,4 +890,36 @@ describe('continuable admission ownership', () => {
       releases: ['startup-failed'],
     })
   })
+
+  it.skipIf(SEAM_SHAPE === 'reference')(
+    'releases cold-resume admission when cancellation wins immediately after acquisition',
+    async () => {
+      const { ctx, parent } = await continuationRuntime(
+        new MockAdapter([textResponse('initial')]),
+      )
+      registerContinuableProvider(ctx, 'continuable', async () => ({}))
+      const started = await ctx.subagents.startContinuable(
+        continuableSpec(parent),
+      )
+      await waitNoActivation(ctx, started.childId)
+
+      const controller = new AbortController()
+      const events: string[] = []
+      ctx.subagents.registerAdmissionPolicy(
+        new CancelAfterAcquirePolicy(controller, events),
+      )
+
+      await expect(ctx.subagents.followup(
+        parent,
+        started.childId,
+        [{ type: 'text', text: 'cancel cold resume' }],
+        {
+          source: { kind: 'user' },
+          signal: controller.signal,
+        },
+      )).rejects.toMatchObject({ name: 'AbortError' })
+      expect(events).toEqual(['acquire', 'release:startup-failed'])
+      expect(ctx.agents.get(started.childId)).toBeUndefined()
+    },
+  )
 })

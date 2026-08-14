@@ -229,8 +229,8 @@ Proceed, but extremely narrowly:
 
 - The reference patch is not a tiny hook: 607 patch lines touch three official
   files, with 187 changed lines in `continuation.ts`. The qualified slim
-  candidate refines this to 225 changed lines (101 in `continuation.ts`) and
-  448 serialized patch lines across the same three files. Both serve as
+  candidate refines this to 230 changed lines (106 in `continuation.ts`) and
+  455 serialized patch lines across the same three files. Both serve as
   lifecycle-integration and conformance vehicles.
 - The long-term product gate is zero-patch Strict through a documented DSH
   extension point. A permanent patched-upstream matrix is not a sustainable

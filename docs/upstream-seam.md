@@ -25,7 +25,7 @@ few lines of plumbing or that users should maintain this fork shape forever.
 | Source commit | `47f943859bef60e4160492346772ded9b24f765a` | `47f943859bef60e4160492346772ded9b24f765a` |
 | Source package | `@deepseek-ai/dsh-subagent@0.1.0-rc.5` | `@deepseek-ai/dsh-subagent@0.1.0-rc.5` |
 | Patch file | `patches/dsh-subagent-admission-seam-slim.patch` | `patches/dsh-subagent-admission-seam.patch` |
-| Patch SHA-256 | `b29860806eb446dc4df1789565c26192b808d638cf404b237c447df10f75c215` | `1340a9ffabde8310f68a7d66c4dacecda5dba263dd51666740801f5ec2c69135` |
+| Patch SHA-256 | `1a3e351cab75ff22d55b0d2a8cb458cbee2794a769cb2f433e105dd421636073` | `1340a9ffabde8310f68a7d66c4dacecda5dba263dd51666740801f5ec2c69135` |
 | Protocol | `1` | `1` |
 | Status | Canonical baseline (promoted) | Recoverable reference artifact |
 | Verification | `corepack pnpm tsx scripts/verify-seam-patch.mts --patch slim` | `corepack pnpm tsx scripts/verify-seam-patch.mts --patch reference` |
@@ -108,11 +108,11 @@ Measured comparison:
 | Metric | Canonical baseline (slim) | Recoverable reference | Slim limit |
 | --- | ---: | ---: | ---: |
 | Official files | 3 | 3 | <= 3 |
-| Insertions | 202 | 380 | — |
+| Insertions | 207 | 380 | — |
 | Deletions | 23 | 38 | — |
-| Changed lines | 225 | 418 | <= 313 |
-| `continuation.ts` changed lines | 101 | 187 | <= 140 |
-| Serialized patch lines | 448 | 607 | <= 455 |
+| Changed lines | 230 | 418 | <= 313 |
+| `continuation.ts` changed lines | 106 | 187 | <= 140 |
+| Serialized patch lines | 455 | 607 | <= 455 |
 
 The protocol concepts are small; lifecycle-correct ownership across fresh start,
 cold resume, partial failure, descendant teardown, cancellation, and quiescent
@@ -174,14 +174,16 @@ corepack pnpm tsx scripts/verify-seam-patch.mts --patch slim
 corepack pnpm tsx scripts/verify-seam-patch.mts --patch reference
 ```
 
-On 2026-08-14, the patched run passed 11 test files and 266 tests on macOS arm64
+On 2026-08-14, the patched run passed 11 test files and 270 tests on macOS arm64
 with Node `v25.9.0` and pnpm `11.19.0`. The local environment had no `corepack`
 binary, so the observed run invoked the same script through `pnpm tsx`; the
 recorded command above is the cross-environment canonical form. Platform-package,
 workspace-cycle, and ignored-build-script bin warnings were present during the
 official lockfile install; they did not fail compilation or tests.
 
-The fixture covers registration and tombstoning, unsupported protocol,
+The 270-test result comprises 249 stock official subagent tests and 21 tests in
+the injected reusable admission fixture. The fixture covers registration and
+tombstoning, unsupported protocol,
 provider-before-policy ordering, one-shot publication/binding, result-before-
 dispose, provider and binding rollback, failed-cleanup lease retention,
 spawn/fork and foreground/background equivalence, fresh continuable creation,

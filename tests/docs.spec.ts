@@ -271,7 +271,7 @@ describe('release-candidate documentation', () => {
     expect(note).not.toContain('perRootAdmittedTotal')
   })
 
-  it('packages the Discussion #131 draft without claiming publication or adoption', () => {
+  it('packages the published Discussion #131 reply source without claiming adoption', () => {
     const draft = text('docs/discussion-131-draft.md')
     expect(draft).toContain('independent')
     expect(draft).toContain('experimental')
@@ -308,7 +308,7 @@ describe('release-candidate documentation', () => {
     for (const file of ['README.md', 'README.zh-CN.md', 'docs/upstream-seam.md', 'docs/compatibility.md']) {
       const content = text(file)
       expect(content).toContain('1340a9ffabde8310f68a7d66c4dacecda5dba263dd51666740801f5ec2c69135')
-      expect(content).toContain('b29860806eb446dc4df1789565c26192b808d638cf404b237c447df10f75c215')
+      expect(content).toContain('1a3e351cab75ff22d55b0d2a8cb458cbee2794a769cb2f433e105dd421636073')
       expect(content).toContain('dsh-turn-budget')
     }
   })

@@ -1,5 +1,5 @@
 diff --git a/packages/subagent/subagent/src/continuation.ts b/packages/subagent/subagent/src/continuation.ts
-index d826efb..9d132e9 100644
+index d826efb..1aead12 100644
 --- a/packages/subagent/subagent/src/continuation.ts
 +++ b/packages/subagent/subagent/src/continuation.ts
 @@ -50,6 +50,7 @@ import type { DelegatedPolicyOverrides } from './child-agent.ts'
@@ -103,7 +103,7 @@ index d826efb..9d132e9 100644
    }
  
    /**
-@@ -910,6 +947,15 @@ export class SubagentContinuationManager {
+@@ -910,8 +947,19 @@ export class SubagentContinuationManager {
          'NOT_RESUMABLE',
        )
      }
@@ -114,12 +114,16 @@ index d826efb..9d132e9 100644
 +      childSessionId: childId,
 +    }, options.signal)
 +    const permit = acquiring === undefined ? undefined : await acquiring
-+    options.signal.throwIfAborted()
++    let materializeOwnsPermit = false
 +
      let activation: Activation
      try {
++      options.signal.throwIfAborted()
++      materializeOwnsPermit = true
        activation = await this.materialize({
-@@ -921,9 +967,11 @@ export class SubagentContinuationManager {
+         childId,
+         provider: descriptor.provider,
+@@ -921,9 +969,14 @@ export class SubagentContinuationManager {
            ...descriptor.agentModel !== undefined ? { model: descriptor.agentModel } : {},
          },
          composition: { persona: descriptor.persona, toolFilter: descriptor.toolFilter },
@@ -127,11 +131,14 @@ index d826efb..9d132e9 100644
          signal: options.signal,
        })
      } catch (error: unknown) {
++      if (permit !== undefined && !materializeOwnsPermit) {
++        return rejectAfterAdmissionRelease(error, permit)
++      }
 +      if (error instanceof AggregateError) throw error
        options.signal.throwIfAborted()
        if (error instanceof SubagentError) throw error
        throw new SubagentError(`subagent "${childId}" is unavailable`, 'NOT_RESUMABLE', { cause: error })
-@@ -948,11 +996,13 @@ export class SubagentContinuationManager {
+@@ -948,11 +1001,13 @@ export class SubagentContinuationManager {
      signal: AbortSignal,
    ): Promise<MessageId> {
      try {
@@ -149,7 +156,7 @@ index d826efb..9d132e9 100644
        throw error
      }
    }
-@@ -987,7 +1037,7 @@ export class SubagentContinuationManager {
+@@ -987,7 +1042,7 @@ export class SubagentContinuationManager {
      inputs: MaterializeInputs,
      parentLineage: readonly Agent[],
    ): Promise<Activation> {
@@ -158,7 +165,7 @@ index d826efb..9d132e9 100644
      // No id pre-check here: the child lock serializes each durable child, both
      // callers reach this only after confirming no Activation exists, and
      // `AgentRegistry.enter()` is the authoritative collision boundary for an id
-@@ -1006,7 +1056,9 @@ export class SubagentContinuationManager {
+@@ -1006,7 +1061,9 @@ export class SubagentContinuationManager {
      const observer = this.host.observeActivation(provider, childId, parent)
      // Agent creation owns rollback before handle transfer. A rejection leaves
      // no resident Activation and therefore publishes no lifecycle edge.
@@ -169,7 +176,7 @@ index d826efb..9d132e9 100644
        ? await this.ownerCtx.agents.resume({
          resumeSessionId: childId,
          agentOptions: inputs.agentOptions,
-@@ -1021,6 +1073,12 @@ export class SubagentContinuationManager {
+@@ -1021,6 +1078,12 @@ export class SubagentContinuationManager {
          signal: inputs.signal,
          setup,
        })
@@ -182,7 +189,7 @@ index d826efb..9d132e9 100644
  
      const activation: Activation = {
        childId,
-@@ -1033,6 +1091,7 @@ export class SubagentContinuationManager {
+@@ -1033,6 +1096,7 @@ export class SubagentContinuationManager {
        ancestry: new WeakSet([handle.agent, ...parentLineage]),
        ownedChildren: new Set(),
        observer,
@@ -190,7 +197,7 @@ index d826efb..9d132e9 100644
        disposal: undefined,
        accepted: new Set(),
        announced: false,
-@@ -1042,6 +1101,8 @@ export class SubagentContinuationManager {
+@@ -1042,6 +1106,8 @@ export class SubagentContinuationManager {
      // Activation, and roll back parent ownership before rejecting.
      this.activations.set(childId, activation)
      try {
@@ -199,7 +206,7 @@ index d826efb..9d132e9 100644
        inputs.signal.throwIfAborted()
        this.assertAdmitting(parent)
        this.acquireOwnership(parent, childId)
-@@ -1064,30 +1125,31 @@ export class SubagentContinuationManager {
+@@ -1064,30 +1130,31 @@ export class SubagentContinuationManager {
        // epoch before its first request.
        observer.start(handle.agent)
      } catch (error: unknown) {
@@ -241,7 +248,7 @@ index d826efb..9d132e9 100644
      })())
    }
  
-@@ -1364,6 +1426,13 @@ export class SubagentContinuationManager {
+@@ -1364,6 +1431,13 @@ export class SubagentContinuationManager {
      // makes a racing delivery wait for release rather than cold-resume into the
      // still-registered agent.
      this.activations.delete(childId)

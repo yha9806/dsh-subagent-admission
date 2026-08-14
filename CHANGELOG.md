@@ -8,11 +8,12 @@ candidates do not imply npm availability or upstream adoption.
 
 ### Changed
 
-- Promoted the qualified slim admission seam candidate (`patches/dsh-subagent-admission-seam-slim.patch`, SHA-256 `b29860806eb446dc4df1789565c26192b808d638cf404b237c447df10f75c215`) to the canonical local exact-target baseline.
+- Promoted the qualified slim admission seam candidate (`patches/dsh-subagent-admission-seam-slim.patch`, SHA-256 `1a3e351cab75ff22d55b0d2a8cb458cbee2794a769cb2f433e105dd421636073`) to the canonical local exact-target baseline.
 - Adopted the cancellable `acquire(request, signal)` protocol signature across one-shot and continuable subagent materialization paths.
 - Unified release reason vocabulary with explicit `startup-failed` on rejected provider startup or rollback and quiescent release after completed teardown.
 - Expanded conformance testing with cancellation before provider startup and cancellation after admission acquisition.
-- Qualified the slim seam patch to 225 changed lines (202 insertions, 23 deletions) across 3 official files (101 changed lines in `continuation.ts`, 448 serialized patch lines), reducing official footprint while preserving full lifecycle semantics.
+- Closed the cold-resume cancellation window after policy acquisition so an untransferred permit releases with `startup-failed` before materialization begins.
+- Qualified the slim seam patch to 230 changed lines (207 insertions, 23 deletions) across 3 official files (106 changed lines in `continuation.ts`, 455 serialized patch lines), reducing official footprint while preserving full lifecycle semantics.
 - Retained the reference patch (`patches/dsh-subagent-admission-seam.patch`, SHA-256 `1340a9ffabde8310f68a7d66c4dacecda5dba263dd51666740801f5ec2c69135`) as an explicitly selectable, fully verifiable recoverable artifact.
 - Preserved external boundaries: this promotion updates local canonical identity and test defaults only; it makes no claim of upstream DeepSeek adoption, maintainer endorsement, or npm package publication.
 - Reframed the project from a generic subagent limiter to a shared lifecycle

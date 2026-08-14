@@ -1,8 +1,33 @@
 # DSH Subagent Upstream Admission Seam Slim Design
 
-Status: approved design; implementation not started
+Status: implemented and requalified; the public reply was authorized separately
 
 Date: 2026-08-14
+
+## Post-qualification slimming decision
+
+The implemented candidate was re-reviewed after the public design question was
+posted. Three directions were compared:
+
+1. **Preserve the lifecycle-correct candidate and slim the official-facing
+   packet** — selected. The patch remains a non-trivial integration vehicle;
+   the maintainers are asked to judge only registration plus acquire, bind, and
+   release ownership edges.
+2. **Delete rollback, cancellation, tombstone, or failure aggregation to reduce
+   source lines** — rejected. These are enforcement semantics, not product
+   policy, and removing them would create fail-open or false-release paths.
+3. **Replace the concrete subagent seam with a generic runtime resource-permit
+   service** — deferred. No second independent consumer currently justifies a
+   broader official abstraction.
+
+The review found one real semantic gap: cold-resume cancellation could win
+after `acquire()` but before ownership transferred to `materialize()`, leaving
+the permit unreleased. A RED fixture reproduced the missing
+`release('startup-failed')`; the minimal ownership-transfer fix then passed 270
+tests across 11 files on the exact official target. The requalified candidate
+is 230 changed lines across three official files, including 106 in
+`continuation.ts`, and 455 serialized patch lines. Further line shaving is not
+an acceptance goal unless it preserves every lifecycle gate below.
 
 ## 1. Purpose
 
@@ -452,6 +477,12 @@ gate. It excludes GUI, hiring, product marketing, external default quotas, and
 the full policy implementation.
 
 ### 11.2 Discussion #131 draft
+
+Publication update: the final evidence-tightened source is tracked in
+`docs/discussion-131-draft.md` and was separately authorized and published at
+https://github.com/deepseek-ai/deepseek-harness/discussions/131#discussioncomment-18020293.
+This section preserves the original pre-publication design gate; it does not
+authorize follow-up comments.
 
 The eventual comment is evidence-first, approximately 150--180 English words,
 and asks one question:
