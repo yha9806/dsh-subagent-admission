@@ -11,13 +11,18 @@ candidates do not imply npm availability or upstream adoption.
 - Reframed the project from a generic subagent limiter to a shared lifecycle
   admission protocol plus reference policy kernel.
 - Acknowledged and bounded current DSH plugin precedents, including
-  `dsh-background-agents`, AgentTeams, and Delegate.
+  `dsh-turn-budget`, `dsh-background-agents`, AgentTeams, and Delegate.
 - Added bilingual release documentation, exact compatibility policy, security
   boundary, third-party notices, and reproducible release-evidence manifest.
+- Defined `perRootAdmittedTotal` as a non-refundable, non-resetting v0.1
+  lifetime fuse and documented zero-patch Strict as the productization gate.
+- Fixed packed-install pnpm command resolution on Windows by selecting
+  `pnpm.cmd`, while preserving an explicit `DSH_PNPM_BIN` override.
 
 ## 0.1.0-rc.1 — 2026-08-14
 
-Local release candidate; not published.
+Package release candidate; source is public, but the package is not published
+to npm.
 
 ### Added
 
@@ -29,7 +34,7 @@ Local release candidate; not published.
   single-process ownership guard.
 - Audit, Strict, Unavailable, and Draining mode truth with exact target
   compatibility selection.
-- Minimal protocol-v1 patch for one pinned DeepSeek Harness source commit and a
+- Experimental protocol-v1 patch for one pinned DeepSeek Harness source commit and a
   reusable upstream conformance fixture.
 - Read-only Snapshot Remote and native Admission Control conversation view.
 - Packed stock-Audit/exact-target-Strict installation tests, native GUI capture,

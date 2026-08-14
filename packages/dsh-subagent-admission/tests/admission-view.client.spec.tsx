@@ -126,6 +126,7 @@ describe('AdmissionControlView semantics', () => {
     expect(screen.getByLabelText('Strict status')).toHaveTextContent('✓')
     expect(screen.getByText('Yes')).toBeVisible()
     expect(screen.getAllByTestId('quota-card')).toHaveLength(4)
+    expect(screen.getByText('Root lifetime admissions')).toBeVisible()
     expect(screen.getByText('2 / 6')).toBeVisible()
     expect(screen.getByText('2 / 4')).toBeVisible()
     expect(screen.getByText('9 / 24')).toBeVisible()

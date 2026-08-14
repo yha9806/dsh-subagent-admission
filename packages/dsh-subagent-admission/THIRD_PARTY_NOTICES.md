@@ -85,6 +85,7 @@ licence files shipped by their respective distributions. The authoritative
 dependency graph for this candidate is `pnpm-lock.yaml`; this notice does not
 replace any dependency's complete licence text.
 
-Development-only comparison repositories—including `dsh-background-agents`,
-AgentTeams, Delegate, and Pi—are inspected as primary-source precedents but are
-not copied into or distributed by this package.
+Development-only comparison repositories—including `dsh-turn-budget`,
+`dsh-background-agents`, AgentTeams, Delegate, and Pi—are inspected as
+primary-source precedents but are not copied into or distributed by this
+package.

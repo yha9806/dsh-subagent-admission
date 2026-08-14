@@ -66,7 +66,10 @@ describe('release-candidate documentation', () => {
       'single-process',
       'not an official DeepSeek',
       'not human review',
-      'not a claim that CI has executed',
+      'source is public at',
+      'zero-patch Strict',
+      'lifetime fuse',
+      'dsh-turn-budget',
       'pnpm release:evidence',
     ]) {
       expect(english.toLowerCase()).toContain(phrase.toLowerCase())
@@ -80,7 +83,10 @@ describe('release-candidate documentation', () => {
       '单进程',
       '不是 DeepSeek 官方组件',
       '不是人工评审',
-      '已经配置',
+      '公开源码仓库',
+      'zero-patch',
+      'lifetime fuse',
+      'dsh-turn-budget',
       'pnpm release:evidence',
     ]) {
       expect(chinese).toContain(phrase)
@@ -116,9 +122,14 @@ describe('release-candidate documentation', () => {
     expect(audit).toContain('fdcca3dbd9ff35b618d10e2c686c3f4c79bf3313')
     expect(audit).toContain('aace29c267b798a014be030768b85f5a2fc73818')
     expect(audit).toContain('30597c014b1c2bba8bd2d4a340ebc18949039c63')
+    expect(audit).toContain('9583ad34682455a0d9be3bc35ec809908e21d1d2')
+    expect(audit).toContain('dsh-turn-budget@0.1.0')
     expect(audit).toContain('Comments: 4 API rows')
     expect(audit).toContain('Reframe v2')
     expect(audit).toContain('current own-tool count/check path is not racy')
+    expect(audit).toContain('complementary and composable')
+    expect(audit).toContain('607 patch lines')
+    expect(audit).toContain('mandatory, monotonic lifetime fuse')
     expect(audit).not.toContain('topic:dsh-plugin` repositories: `605')
     expect(audit).not.toContain('Total comments (REST) | `2`')
   })
@@ -140,6 +151,17 @@ describe('release-candidate documentation', () => {
   it('packs only explicit documentation and generated runtime faces', () => {
     const manifest = json('packages/dsh-subagent-admission/package.json')
     expect(manifest.description).toContain('Shared lifecycle admission protocol')
+    expect(manifest.author).toEqual({
+      name: 'Haorui Yu',
+      url: 'https://github.com/yha9806',
+    })
+    expect(manifest.repository).toEqual({
+      type: 'git',
+      url: 'git+https://github.com/yha9806/dsh-subagent-admission.git',
+    })
+    expect(manifest.bugs.url).toBe('https://github.com/yha9806/dsh-subagent-admission/issues')
+    expect(manifest.homepage).toBe('https://github.com/yha9806/dsh-subagent-admission#readme')
+    expect(manifest.publishConfig).toEqual({ access: 'public' })
     expect(manifest.files).toEqual([
       'README.md',
       'README.zh-CN.md',
@@ -199,5 +221,6 @@ describe('release-candidate documentation', () => {
     })
     expect(text('docs/reproduction.md')).toContain('pnpm release:evidence:check')
     expect(text('docs/compatibility.md')).toContain('Workflow configuration is not evidence')
+    expect(text('docs/compatibility.md')).toContain('zero-patch Strict')
   })
 })

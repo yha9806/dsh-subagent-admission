@@ -2,7 +2,22 @@
   "name": "dsh-subagent-admission",
   "version": "0.1.0-rc.1",
   "description": "Shared lifecycle admission protocol and reference policy kernel for DSH subagents.",
+  "author": {
+    "name": "Haorui Yu",
+    "url": "https://github.com/yha9806"
+  },
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yha9806/dsh-subagent-admission.git"
+  },
+  "bugs": {
+    "url": "https://github.com/yha9806/dsh-subagent-admission/issues"
+  },
+  "homepage": "https://github.com/yha9806/dsh-subagent-admission#readme",
+  "publishConfig": {
+    "access": "public"
+  },
   "type": "module",
   "main": "lib/index.js",
   "types": "lib/types/index.d.ts",

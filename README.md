@@ -2,6 +2,8 @@
 
 [简体中文](README.zh-CN.md)
 
+[![CI](https://github.com/yha9806/dsh-subagent-admission/actions/workflows/ci.yml/badge.svg)](https://github.com/yha9806/dsh-subagent-admission/actions/workflows/ci.yml)
+
 An experimental shared lifecycle admission protocol and reference policy
 kernel for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)
 subagents.
@@ -13,18 +15,33 @@ not add another orchestrator. It makes the decision to create or reactivate a
 subagent explicit, atomic, and lifecycle-owned across every caller that uses
 the official runtime.
 
-> **Release-candidate status:** `0.1.0-rc.1` is a local, unpublished candidate.
-> This is an independent community project. It is not an official DeepSeek
-> component, has not been endorsed or adopted by DeepSeek, and is not proven
-> in production.
+The long-term product direction is an **Agent Runtime Resource Control Plane**:
+every materialising agent workload should first acquire an explicit,
+observable, lifecycle-owned resource permit. v0.1 deliberately tests only the
+DSH subagent boundary.
+
+> **Release-candidate status:** the source is public at
+> [`yha9806/dsh-subagent-admission`](https://github.com/yha9806/dsh-subagent-admission),
+> while `0.1.0-rc.1` is not published to npm. This is an independent community
+> project, not an official DeepSeek component. It has no DeepSeek endorsement
+> or adoption, external-user evidence, production deployment, or maintainer
+> response.
 
 ## Why a shared protocol
 
-Existing DSH plugins already solve useful local problems. For example,
-`dsh-background-agents` limits starts made through its own tool, serialises
-those starts per parent, and counts existing continuable children. AgentTeams
-limits members inside a team, while Delegate gates declared dependencies.
-Those are real precedents, not gaps to erase.
+Existing DSH plugins already solve useful local problems. In particular,
+[`dsh-turn-budget`](https://github.com/Nunchakus888/dsh-turn-budget) is an
+immediately installable, fail-closed per-turn circuit breaker built entirely on
+public `agent/pre-step` and `tools/pre-execute` hooks. It limits steps, tool
+calls, and provider tokens. `dsh-background-agents` limits starts made through
+its own tool, serialises those starts per parent, and counts existing
+continuable children. AgentTeams limits members inside a team, while Delegate
+gates declared dependencies. Those are real precedents, not gaps to erase.
+
+`dsh-turn-budget` and this project address different layers and can compose:
+the former bounds work within one turn on stock DSH; this experiment targets
+atomic process/root admission shared by all callers and held through the
+official child lifecycle. Neither should be presented as replacing the other.
 
 The remaining infrastructure problem is different: a tool-local lock cannot
 atomically govern starts made at the same time by built-in tools, other
@@ -33,24 +50,28 @@ capacity rule also needs to cover one-shot and continuable work, cold resume,
 and the official cleanup boundary. The current primary-source comparison is
 recorded in [the ecosystem audit](compatibility/ecosystem-audit.md).
 
-This repository therefore ships two deliberately separate pieces:
+This repository therefore separates three product layers:
 
-- a minimal, optional **protocol-v1 runtime seam** that asks for admission
+- a narrow, optional **protocol-v1 admission contract** that asks for admission
   before provider work or child materialisation and reports bind/release
   lifecycle edges;
 - an external **reference policy kernel** implementing atomic global/root
-  active capacity, durable root/parent cumulative quotas, ownership recovery,
-  typed denials, telemetry, and a read-only native GUI.
+  active capacity, durable root/parent cumulative fuses, ownership recovery,
+  and typed denials;
+- an **operator and conformance surface** providing bounded telemetry, a
+  read-only native GUI, exact-target tests, and release evidence.
 
-The official-facing contribution is the small protocol. The larger plugin is
-one policy implementation and conformance vehicle, not a request to move its
-whole product surface into DSH core.
+The official-facing design question is the narrow protocol contract. The
+current reference patch is a non-trivial lifecycle integration vehicle: 607
+patch lines across three official files, with 187 changed lines in
+`continuation.ts`. It is not a “tiny hook”, and the larger plugin is not a
+request to move the whole product surface into DSH core.
 
 ## Honest operating modes
 
 | Mode | Runtime | Behaviour |
 | --- | --- | --- |
-| **Audit** | Stock npm `@deepseek-ai/dsh-subagent@0.1.0-rc.6` | Observes and explains activity. It never claims to block a start. |
+| **Audit** | Stock npm `@deepseek-ai/dsh-subagent@0.1.0-rc.6` | Observes and explains activity. It never claims to block a start or solve #131. |
 | **Strict** | Exact patched source target `47f943859bef60e4160492346772ded9b24f765a` / source package `0.1.0-rc.5` | Registers protocol v1 and enforces all-or-nothing admission before provider work. |
 | **Unavailable** | Any unverified or incomplete Strict environment | Fails closed instead of silently degrading to Audit or stock behaviour. |
 
@@ -58,6 +79,12 @@ Package semver and method presence are not enough to select Strict. The exact
 source identity, protocol version, patch hash, storage/bootstrap state, and
 single-process ownership guard must all match. See
 [compatibility](docs/compatibility.md).
+
+For an immediately installable stock-DSH turn circuit breaker, use
+`dsh-turn-budget`. Strict lifecycle admission here currently requires the exact
+experimental seam and should be evaluated as a reference implementation,
+conformance system, and upstream design prototype—not a mature zero-patch
+product.
 
 ## Policy semantics
 
@@ -68,7 +95,7 @@ controls:
 | --- | ---: | --- |
 | Global active | 6 | Live subagent activations in this DSH process |
 | Per-root active | 4 | Live activations owned by one durable root conversation |
-| Per-root admitted total | 24 | New children accepted after that root enters coverage |
+| Per-root lifetime admitted total | 24 | Non-refundable new-child admissions after that root enters coverage |
 | Per-parent admitted children | 8 | New direct children accepted from one parent after coverage |
 
 New one-shot and continuable children consume active and cumulative capacity.
@@ -77,8 +104,17 @@ again. A resident follow-up reuses its activation and consumes nothing new.
 An accepted permit remains held until the official runtime reaches quiescent
 cleanup; result settlement alone is not release evidence.
 
-There is no wait queue, priority, pre-emption, force release, quota reset, or
-GUI mutation path in v0.1.
+`perRootAdmittedTotal` is a mandatory positive, monotonic **lifetime fuse** in
+v0.1. It is never refunded, disabled, reset, or aged out. A sufficiently
+long-lived root will therefore reach 24 accepted children and remain denied
+for new children. That is an intentional fail-fast safety boundary for this
+bounded experiment, not a sustainable default for every long-running product.
+Future product semantics should separate always-on active caps from an optional
+lifetime fuse, epoch/window budgets, and audited offline reset or migration.
+There is deliberately no ad-hoc GUI reset path.
+
+There is no wait queue, priority, pre-emption, force release, or GUI mutation
+path in v0.1.
 
 ## Build and install the candidate
 
@@ -170,9 +206,10 @@ The release evidence collector produces and validates:
   bundle, reports, and promoted screenshot.
 
 See [reproduction](docs/reproduction.md) for the safety boundary. GitHub Actions
-is configured for Linux Node 22.19/24 and macOS/Windows Node 24 smoke checks,
-but configuration is not a claim that CI has executed on an unpublished
-branch. Local and remote evidence remain separate.
+runs Linux Node 22.19/24 and macOS/Windows Node 24 checks in the public source
+repository. The badge and linked workflow runs are remote evidence; workflow
+configuration and local results alone are not. npm publication, production use,
+DeepSeek adoption, and maintainer response remain separate gates.
 
 ## Boundaries
 
@@ -182,17 +219,18 @@ branch. Local and remote evidence remain separate.
   provider rate limiting, token budgeting, scheduling, or orchestration.
 - Audit observes; only an exact verified protocol-v1 target can enforce.
 - Cumulative quota begins at an explicit safe bootstrap. Historical work is
-  not reconstructed or invented.
+  not reconstructed or invented, and the v0.1 lifetime fuse never resets.
 - A malicious in-process plugin shares the host trust boundary and can corrupt
   the process; v0.1 does not sandbox peer plugins.
-- The reference patch is a proposal and test vehicle, not an accepted upstream
-  change.
+- The current patched Strict path is a proposal and test vehicle, not an
+  accepted upstream change or sustainable install shape. A documented,
+  zero-patch Strict extension point is the productization gate.
 
 ## Project documents
 
 - [Architecture and invariants](docs/architecture.md)
 - [Compatibility matrix and upgrade gate](docs/compatibility.md)
-- [Minimal upstream seam](docs/upstream-seam.md)
+- [Experimental upstream seam](docs/upstream-seam.md)
 - [Novelty and ecosystem audit](compatibility/ecosystem-audit.md)
 - [Safe #131 reproduction](docs/reproduction.md)
 - [Security policy](SECURITY.md)

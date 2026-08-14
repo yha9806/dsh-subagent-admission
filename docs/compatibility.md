@@ -37,6 +37,24 @@ version”.
 Audit never registers a policy, even if a seam happens to exist. Strict never
 silently becomes Audit.
 
+## Delivery maturity and product gate
+
+- Stock Audit is installable observability only. It cannot prevent a start and
+  is not a #131 painkiller.
+- Patched Strict is a verified reference implementation and conformance system
+  for one exact source identity. The seam patch is 607 lines across three
+  official files, including 187 changed lines in `continuation.ts`.
+- A documented official capability that supports **zero-patch Strict** is the
+  productization gate. Permanently maintaining a private patched-upstream
+  matrix is not the intended sustainable product.
+- The source repository is public. npm publication, external users, production
+  deployment, maintainer response, and DeepSeek adoption have not been shown.
+
+For a stock-DSH, immediately installable per-turn safety circuit breaker,
+[`dsh-turn-budget`](https://github.com/Nunchakus888/dsh-turn-budget) is the
+closest complement. Its step/tool/provider-token budgets and this project's
+cross-caller lifecycle admission solve different layers.
+
 ## Strict activation prerequisites
 
 Strict requires every one of the following:
@@ -110,9 +128,10 @@ The repository configures:
   smoke checks;
 - Linux Node 24 native GUI capture as an uploaded artifact.
 
-Workflow configuration is not evidence that GitHub Actions has run. Local
-macOS results prove only the commands and environment recorded in the generated
-manifest. A public CI run, npm publication, DeepSeek adoption, and production
+Workflow configuration is not evidence that GitHub Actions has run. The public
+badge and linked workflow runs are remote evidence; local macOS results prove
+only the commands and environment recorded in the generated manifest. A green
+run, npm publication, DeepSeek adoption, maintainer response, and production
 deployment are independent release gates.
 
 ## Ecosystem compatibility
@@ -124,5 +143,8 @@ is active.
 
 This does not make other plugins dependencies or imply endorsement. Their own
 tool-local limits, team/member rules, dependency gates, scheduling, or GUIs
-remain independent. The current direct-source boundary analysis is maintained
-in [`compatibility/ecosystem-audit.md`](../compatibility/ecosystem-audit.md).
+remain independent. `dsh-turn-budget` remains the immediately deployable
+per-turn circuit breaker; lifecycle admission remains an experimental
+exact-target capability. The current direct-source boundary analysis is
+maintained in
+[`compatibility/ecosystem-audit.md`](../compatibility/ecosystem-audit.md).

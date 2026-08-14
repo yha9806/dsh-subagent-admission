@@ -15,6 +15,17 @@ describe('dsh-subagent-admission package manifest', () => {
     const manifest = readJson('packages/dsh-subagent-admission/package.json')
     expect(manifest.name).toBe('dsh-subagent-admission')
     expect(manifest.version).toBe('0.1.0-rc.1')
+    expect(manifest.author).toEqual({
+      name: 'Haorui Yu',
+      url: 'https://github.com/yha9806',
+    })
+    expect(manifest.repository).toEqual({
+      type: 'git',
+      url: 'git+https://github.com/yha9806/dsh-subagent-admission.git',
+    })
+    expect(manifest.bugs.url).toBe('https://github.com/yha9806/dsh-subagent-admission/issues')
+    expect(manifest.homepage).toBe('https://github.com/yha9806/dsh-subagent-admission#readme')
+    expect(manifest.publishConfig).toEqual({ access: 'public' })
     expect(manifest.engines).toEqual({ node: '^22.19.0 || >=24.0.0' })
     expect(manifest.dsh.bundle.patch).toBe('./cordis.patch.yml')
     expect(manifest.dsh.client).toEqual({

@@ -2,9 +2,16 @@
 
 ## 1. Positioning
 
-`dsh-subagent-admission` is an external reference policy kernel for one
-DeepSeek Harness Host process. The official-facing proposal is a much smaller
-protocol-v1 seam in `SubagentRuntime`.
+The long-term north star is an **Agent Runtime Resource Control Plane**:
+
+> Every agent workload should acquire an explicit, observable,
+> lifecycle-owned resource permit before materialisation.
+
+`dsh-subagent-admission` is a deliberately narrow v0.1 experiment at the
+DeepSeek Harness subagent boundary. It separates three layers: an admission
+protocol, an external policy kernel, and an operator/conformance surface. The
+current implementation governs one DSH Host process; the official-facing
+design question is only the protocol-v1 capability in `SubagentRuntime`.
 
 The distinction is intentional:
 
@@ -18,6 +25,9 @@ The distinction is intentional:
 
 This is not a second runtime, a scheduler, a generic orchestration layer, or a
 process sandbox.
+
+The release candidate is a reference implementation, conformance system, and
+upstream design prototype. It is not yet a sustainable zero-patch product.
 
 ## 2. Why the seam belongs in the runtime
 
@@ -34,7 +44,11 @@ plugin, provider adapter, SDK path, and direct service caller that converges on
 plugin API.
 
 This is the residual contribution after accounting for existing local caps in
-`dsh-background-agents`, AgentTeams, and related plugins. See
+`dsh-background-agents`, AgentTeams, and related plugins. It also complements
+[`dsh-turn-budget`](https://github.com/Nunchakus888/dsh-turn-budget), which uses
+public hooks to provide an immediately installable, fail-closed per-turn
+step/tool/token circuit breaker on stock DSH, but explicitly does not provide
+process-wide or cross-subagent lifecycle admission. See
 [`compatibility/ecosystem-audit.md`](../compatibility/ecosystem-audit.md).
 
 ## 3. Component map
@@ -186,6 +200,18 @@ Defaults:
 - per-root admitted total: 24;
 - per-parent admitted children: 8.
 
+The two cumulative limits are monotonic lifetime fuses for the covered durable
+identity. They are mandatory positive integers in v0.1, are never refunded,
+have no time window, and cannot be disabled or reset. Consequently a root that
+remains in service long enough will eventually exhaust its 24 new-child
+admissions permanently. This is acceptable only as an explicit bounded-safety
+choice for the experiment; it is not a general product default.
+
+A product version should keep active caps always available while separating an
+optional lifetime fuse, epoch/window budgets, and an audited offline reset or
+migration operation. A GUI reset is intentionally excluded because it would
+rewrite authoritative safety state without a migration protocol.
+
 The check order is stable:
 
 1. normal DSH validation;
@@ -236,7 +262,8 @@ verify that cumulative quota survives while active leases reset to zero.
 Audit and Strict are not confidence labels; they are different capabilities.
 
 - **Audit** installs on stock DSH, observes official lifecycle events, and
-  exposes `enforced: false` with reason `audit-observation-only`.
+  exposes `enforced: false` with reason `audit-observation-only`; it does not
+  prevent #131's failure shape.
 - **Strict** registers the versioned policy only on an exact verified source
   target and reports `enforced: true`.
 - **Unavailable** is the only result of a requested Strict configuration whose
@@ -244,6 +271,20 @@ Audit and Strict are not confidence labels; they are different capabilities.
 
 There is no monkey patch, provider wrapping, tool interception, or best-effort
 Strict fallback.
+
+## Productization gate
+
+DeepSeek Harness documents “Everything is a Plugin”, no privileged core to
+patch, and explicit Service Definition / Provider / Consumer roles for new
+capability seams. The protocol is philosophically compatible with that model,
+but the current delivery shape is not yet: Strict depends on a 607-line patch
+across three official files, including 187 changed lines in
+`continuation.ts`.
+
+The non-negotiable productization gate is therefore **zero-patch Strict**: DSH
+must expose an optional documented lifecycle-owned admission capability that an
+external policy can provide without maintaining a private upstream patch. Until
+then, patched Strict remains an exact-target conformance and design vehicle.
 
 ## 10. Read-only observability
 

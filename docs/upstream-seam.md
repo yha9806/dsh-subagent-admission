@@ -1,4 +1,4 @@
-# Minimal DSH shared lifecycle admission seam
+# Experimental DSH shared lifecycle admission seam
 
 This repository proposes one optional, versioned ownership seam in the official
 `@deepseek-ai/dsh-subagent` runtime. It lets one external policy make an atomic
@@ -12,6 +12,10 @@ official patch contains no limits, queue, durable ledger, root resolver,
 telemetry, or GUI. Those remain external policy concerns. Existing plugins may
 keep their own product-level limits and UIs; normal calls through the shared
 runtime receive Host admission without importing another tool-specific API.
+
+“Narrow contract” does not mean trivial integration. The current exact-target
+patch is a reference and conformance vehicle, not a claim that DSH needs only a
+few lines of plumbing or that users should maintain this fork shape forever.
 
 ## Verified target
 
@@ -98,8 +102,39 @@ The reference patch modifies exactly three official source files:
 - `packages/subagent/subagent/src/continuation.ts` — fresh/cold Activation
   ownership and quiescent release.
 
+The exact patch is 607 lines: 380 insertions and 38 deletions. Its
+`continuation.ts` diff alone is 151 insertions and 36 deletions, or 187 changed
+lines. The protocol concepts are small; lifecycle-correct ownership across
+fresh start, cold resume, partial failure, descendant teardown, and quiescent
+release is not. Public communication must describe this as a non-trivial
+experimental integration, not a “tiny hook”.
+
 `tests/upstream/admission-policy.spec.ts` is copied into the official package
 only by the verifier. It is not embedded in the source patch.
+
+## Official design question and delivery gate
+
+The [official architecture](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/architecture.md)
+says that every part of DSH is a plugin, that there is no privileged core to
+patch, and that a new capability seam should have a Service Definition,
+Provider, and Consumer. This proposal is intended to test one question within
+that philosophy:
+
+> Would an optional lifecycle-owned subagent admission capability belong as a
+> documented extension point?
+
+The long-term product gate is **zero-patch Strict**. An external policy should
+register through a documented official capability without requiring users to
+carry this exact source patch. If that cannot be achieved, this repository may
+remain useful as conformance research but should not become a permanently
+patched product matrix.
+
+The current [official contribution guide](https://github.com/deepseek-ai/deepseek-harness/blob/master/CONTRIBUTING.md)
+does not accept external pull requests and instead directs community work
+toward Discussions, independent plugins, the `dsh-plugin` topic, and technical
+write-ups. This repository therefore ships the independent experiment and
+concise design note first. It has not submitted a PR, tag, package release, or
+official Discussion proposal.
 
 ## Reproducible RED/GREEN verification
 

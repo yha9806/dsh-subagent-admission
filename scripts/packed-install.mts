@@ -153,6 +153,16 @@ function tail(value: string, limit = 4_000): string {
   return value.length <= limit ? value : value.slice(-limit)
 }
 
+/** Resolve the pnpm launcher without assuming POSIX executable semantics. */
+export function resolvePnpmExecutable(
+  environment: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform,
+): string {
+  const override = environment.DSH_PNPM_BIN
+  if (override !== undefined && override.length > 0) return override
+  return platform === 'win32' ? 'pnpm.cmd' : 'pnpm'
+}
+
 function recordCommand(
   commands: PackedCommandReport[],
   name: string,
@@ -850,7 +860,7 @@ export async function runPackedInstall(
   const cleanup = options.cleanup ?? true
   const auditOnly = options.auditOnly ?? false
   const capture = options.captureGui ?? false
-  const pnpm = process.env.DSH_PNPM_BIN ?? 'pnpm'
+  const pnpm = resolvePnpmExecutable()
   const commands: PackedCommandReport[] = []
   const temporaryRoot = mkdtempSync(join(tmpdir(), TEMP_PREFIX))
   assertTemporaryRoot(temporaryRoot, TEMP_PREFIX)
